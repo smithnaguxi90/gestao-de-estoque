@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Sistema de Gestão de Estoque - Almoxarifado COENG | DETEC"
+    />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>Gestão de Estoque - COENG | DETEC</title>
+
+    <!-- Favicon e Apple Touch Icon -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./apple-touch-icon.png"
+    />
+    <link rel="mask-icon" color="#2563eb" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+
+    <!-- RASTREAMENTO ADS & FUNIL (Google / Meta Pixel) -->
+    <!-- Exemplo: Cole o código do Google Tag Manager aqui -->
+    <script>
+      // Exemplo de evento de PageView para Funil
+      // gtag('event', 'page_view');
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                800: "#1e40af",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- Exportação PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body
+    class="bg-slate-50 text-slate-700 h-screen overflow-hidden selection:bg-brand-100 selection:text-brand-900"
+  >
+    <svg
+      aria-hidden="true"
+      style="position: absolute; width: 0; height: 0; overflow: hidden"
+      version="1.1"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <symbol id="icon-brand-logo" viewBox="0 0 101.968 101.968">
+          <g>
+            <path
+              d="M24.715,47.432L7.968,64.86v29.406c0,0.828,0.671,1.5,1.5,1.5h20.334c0.828,0,1.5-0.672,1.5-1.5V49.158l-4.69-1.726H24.715z"
+            />
+            <path
+              d="M66.135,61.1H45.801c-0.828,0-1.5,0.672-1.5,1.5v31.666c0,0.828,0.672,1.5,1.5,1.5h20.334c0.829,0,1.5-0.672,1.5-1.5V62.6C67.635,61.772,66.964,61.1,66.135,61.1z"
+            />
+            <path
+              d="M101.724,29.49c-0.777,0.406-1.652,0.621-2.53,0.621c-1.276,0-2.521-0.45-3.5-1.27l-3.694-3.088l-13.365,14.58v53.934c0,0.828,0.672,1.5,1.5,1.5h20.334c0.829,0,1.5-0.672,1.5-1.5v-64.93C101.885,29.387,101.81,29.445,101.724,29.49z"
+            />
+            <path
+              d="M57.797,54.094c1.144,0.419,2.424,0.108,3.248-0.788l30.839-33.643l7.217,6.032c0.353,0.294,0.847,0.349,1.254,0.136c0.407-0.214,0.646-0.648,0.605-1.107L99.396,7.235c-0.055-0.625-0.606-1.086-1.231-1.029l-17.49,1.563c-0.458,0.041-0.846,0.354-0.982,0.791C79.646,8.706,79.631,8.854,79.644,9c0.026,0.294,0.167,0.572,0.403,0.769l7.229,6.043L57.98,47.769L24.535,35.463c-1.118-0.41-2.373-0.121-3.198,0.735l-20.5,21.333c-1.148,1.195-1.11,3.095,0.084,4.242c0.583,0.561,1.332,0.837,2.079,0.837c0.788,0,1.574-0.309,2.164-0.921l19.141-19.92L57.797,54.094z"
+            />
+          </g>
+        </symbol>
+      </defs>
+    </svg>
+
+    <div
+      id="toast-container"
+      aria-live="polite"
+      role="region"
+      aria-label="Notificações"
+    ></div>
+
+    <div
+      id="loading-screen"
+      class="fixed inset-0 bg-white z-[60] flex flex-col items-center justify-center"
+    >
+      <div class="relative w-16 h-16 mb-4">
+        <div
+          class="absolute inset-0 rounded-full border-4 border-slate-100"
+        ></div>
+        <div
+          class="absolute inset-0 rounded-full border-4 border-brand-600 border-t-transparent animate-spin"
+        ></div>
+      </div>
+      <h2 class="text-lg font-bold text-slate-900">
+        Conectando ao Firebase...
+      </h2>
+      <p class="text-sm text-slate-500 mt-2" id="loading-text">
+        Sincronizando dados em tempo real
+      </p>
+    </div>
+
+    <!-- LANDING PAGE (SaaS) -->
+    <div
+      id="landing-layout"
+      class="hidden min-h-screen bg-slate-50 flex flex-col relative overflow-hidden"
+    >
+      <!-- Efeitos de Fundo -->
+      <div
+        class="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] opacity-20 pointer-events-none"
+        style="background: radial-gradient(circle, #3b82f6 0%, transparent 60%)"
+      ></div>
+
+      <!-- Topo Comercial -->
+      <header
+        class="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center relative z-10"
+      >
+        <div class="flex items-center gap-3">
+          <div
+            class="bg-brand-600 p-2 rounded-xl shadow-lg shadow-brand-600/30"
+          >
+            <svg class="w-6 h-6 text-white fill-current">
+              <use href="#icon-brand-logo"></use>
+            </svg>
+          </div>
+          <span class="font-extrabold text-xl text-slate-900 tracking-tight"
+            >SEROB<span class="text-brand-600">.</span></span
+          >
+        </div>
+        <nav
+          class="hidden md:flex gap-8 items-center text-sm font-semibold text-slate-600"
+        >
+          <a href="#recursos" class="hover:text-brand-600 transition-colors"
+            >Recursos</a
+          >
+          <a href="#precos" class="hover:text-brand-600 transition-colors"
+            >Preços</a
+          >
+          <button
+            onclick="window.showLogin()"
+            class="text-brand-600 hover:text-brand-700"
+          >
+            Fazer Login
+          </button>
+        </nav>
+      </header>
+
+      <!-- Hero Section (Conversão) -->
+      <main
+        class="flex-1 flex flex-col items-center justify-center text-center px-6 relative z-10 -mt-10"
+      >
+        <div
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 border border-brand-100 text-brand-600 text-xs font-bold uppercase tracking-wider mb-8 animate-fade-in"
+        >
+          <span class="relative flex h-2 w-2"
+            ><span
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"
+            ></span
+            ><span
+              class="relative inline-flex rounded-full h-2 w-2 bg-brand-500"
+            ></span
+          ></span>
+          Inteligência Artificial Integrada
+        </div>
+
+        <h1
+          class="text-5xl md:text-7xl font-extrabold text-slate-900 tracking-tight max-w-4xl leading-[1.1] mb-6 animate-slide-up"
+        >
+          Controle de Estoque <br /><span
+            class="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-500"
+            >Sem Complicação.</span
+          >
+        </h1>
+
+        <p
+          class="text-lg text-slate-500 max-w-2xl mb-10 animate-slide-up"
+          style="animation-delay: 100ms"
+        >
+          Pare de perder dinheiro com rupturas. Um painel executivo completo com
+          previsões preditivas, relatórios automatizados e gestão multi-depósito
+          para empresas que querem crescer.
+        </p>
+
+        <div
+          class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto animate-slide-up"
+          style="animation-delay: 200ms"
+        >
+          <!-- Evento onClick simula ir para tela de Criação de Conta / Login -->
+          <button
+            onclick="window.showLogin()"
+            class="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl shadow-xl shadow-brand-600/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2"
+          >
+            Testar Gratuitamente
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </button>
+          <button
+            onclick="window.showLogin()"
+            class="px-8 py-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 transition-all flex items-center justify-center gap-2"
+          >
+            <i data-lucide="play-circle" class="w-5 h-5 text-slate-400"></i> Ver
+            Demonstração
+          </button>
+        </div>
+
+        <!-- Prova Social -->
+        <div
+          class="mt-16 pt-8 border-t border-slate-200/60 w-full max-w-3xl animate-fade-in"
+          style="animation-delay: 400ms"
+        >
+          <p
+            class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6"
+          >
+            Confiado por empresas inovadoras
+          </p>
+          <div
+            class="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale"
+          >
+            <!-- Substituir por Logos de clientes reais -->
+            <div class="text-xl font-black">Empresa A</div>
+            <div class="text-xl font-black">Empresa B</div>
+            <div class="text-xl font-black">Grupo C</div>
+          </div>
+        </div>
+
+        <!-- Funil / Seção de Preços -->
+        <div
+          id="precos"
+          class="w-full max-w-5xl mx-auto mt-24 mb-16 animate-slide-up"
+          style="animation-delay: 500ms"
+        >
+          <div class="text-center mb-12">
+            <h2
+              class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight"
+            >
+              Planos simples para crescer com você
+            </h2>
+            <p class="text-slate-500 mt-4 text-lg">
+              Comece grátis e evolua quando precisar de Inteligência Artificial
+              e múltiplos depósitos.
+            </p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Plano Starter -->
+            <div
+              class="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col text-left"
+            >
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Starter</h3>
+              <p class="text-slate-500 text-sm mb-6 flex-1">
+                Perfeito para pequenos estoques e almoxarifados únicos.
+              </p>
+              <div class="text-4xl font-extrabold text-slate-900 mb-6">
+                Grátis<span class="text-sm font-medium text-slate-400"
+                  >/sempre</span
+                >
+              </div>
+              <ul class="space-y-4 mb-8 text-sm text-slate-600 font-medium">
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i> Até
+                  100 itens cadastrados
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i>
+                  Movimentações Ilimitadas
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i> 1
+                  Usuário
+                </li>
+              </ul>
+              <button
+                onclick="window.showLogin()"
+                class="w-full py-3 px-4 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                Criar Conta Grátis
+              </button>
+            </div>
+            <!-- Plano Pro (Destaque) -->
+            <div
+              class="bg-slate-900 rounded-3xl p-8 border border-slate-800 shadow-2xl flex flex-col text-left relative transform md:-translate-y-4"
+            >
+              <div
+                class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 bg-gradient-to-r from-brand-500 to-indigo-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-full"
+              >
+                Mais Escolhido
+              </div>
+              <h3 class="text-lg font-bold text-white mb-2">Pro SaaS</h3>
+              <p class="text-slate-400 text-sm mb-6 flex-1">
+                Para empresas que buscam automação e BI.
+              </p>
+              <div class="text-4xl font-extrabold text-white mb-6">
+                R$ 97<span class="text-sm font-medium text-slate-500"
+                  >/mês</span
+                >
+              </div>
+              <ul class="space-y-4 mb-8 text-sm text-slate-300 font-medium">
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-400"></i>
+                  Cadastros Ilimitados
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-400"></i>
+                  Inteligência Preditiva (IA)
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-400"></i>
+                  Multi-Depósitos
+                </li>
+              </ul>
+              <button
+                onclick="window.showLogin()"
+                class="w-full py-3 px-4 rounded-xl font-bold bg-brand-600 text-white hover:bg-brand-700 shadow-lg shadow-brand-600/30 transition-all active:scale-95"
+              >
+                Começar Teste de 7 Dias
+              </button>
+            </div>
+            <!-- Plano Enterprise -->
+            <div
+              class="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col text-left"
+            >
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Enterprise</h3>
+              <p class="text-slate-500 text-sm mb-6 flex-1">
+                Controle total, segurança e auditoria para grandes operações.
+              </p>
+              <div class="text-4xl font-extrabold text-slate-900 mb-6">
+                R$ 297<span class="text-sm font-medium text-slate-400"
+                  >/mês</span
+                >
+              </div>
+              <ul class="space-y-4 mb-8 text-sm text-slate-600 font-medium">
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i>
+                  Relatórios em PDF Automatizados
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i>
+                  Múltiplas Empresas (Filiais)
+                </li>
+                <li class="flex items-center gap-3">
+                  <i data-lucide="check" class="w-4 h-4 text-brand-500"></i>
+                  Níveis de Acesso (RBAC)
+                </li>
+              </ul>
+              <button
+                onclick="window.showLogin()"
+                class="w-full py-3 px-4 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                Falar com Consultor
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div
+      id="login-layout"
+      class="hidden flex h-full w-full items-center justify-center bg-slate-100 p-4"
+    >
+      <div
+        class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 animate-slide-up border border-slate-200"
+      >
+        <button
+          onclick="window.showLanding()"
+          class="absolute top-6 left-6 text-slate-400 hover:text-brand-600 transition-colors hidden md:block"
+        >
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
+        </button>
+
+        <div class="text-center mb-8">
+          <div
+            class="bg-brand-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand-600/20 transform transition-transform hover:scale-105 duration-300"
+          >
+            <svg class="w-8 h-8 text-white fill-current">
+              <use href="#icon-brand-logo"></use>
+            </svg>
+          </div>
+          <h1 class="text-2xl font-bold text-slate-900 tracking-tight">
+            Gestão de Estoque
+          </h1>
+          <p class="text-slate-500 mt-2 text-sm">
+            Faça login para gerenciar o almoxarifado
+          </p>
+        </div>
+
+        <form id="login-form" class="space-y-5">
+          <div>
+            <label
+              class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5"
+              >Email</label
+            >
+            <div class="relative group">
+              <i
+                data-lucide="user"
+                class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-500 transition-colors"
+              ></i>
+              <input
+                type="email"
+                id="login-username"
+                placeholder="seuemail@dominio.com"
+                autocomplete="username"
+                class="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all bg-slate-50 focus:bg-white"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5"
+              >Senha</label
+            >
+            <div class="relative group">
+              <i
+                data-lucide="lock"
+                class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-500 transition-colors"
+              ></i>
+              <input
+                type="password"
+                id="login-password"
+                placeholder="••••••••"
+                autocomplete="current-password"
+                class="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all bg-slate-50 focus:bg-white"
+                required
+              />
+            </div>
+          </div>
+          <div
+            id="login-error"
+            role="alert"
+            aria-live="assertive"
+            class="hidden p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg flex items-center gap-2 animate-pulse"
+          >
+            <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+            <span>Usuário ou senha incorretos.</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <label
+              class="inline-flex items-center gap-2 text-sm font-semibold text-slate-600"
+            >
+              <input
+                id="login-remember"
+                type="checkbox"
+                class="accent-brand-600"
+                checked
+              />
+              Manter conectado
+            </label>
+            <button
+              type="button"
+              onclick="AuthController.handleForgotPassword()"
+              class="text-sm font-bold text-brand-700 hover:text-brand-800"
+            >
+              Esqueci minha senha
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            class="w-full bg-brand-600 text-white font-semibold py-3.5 rounded-xl hover:bg-brand-700 active:bg-brand-800 transition-all shadow-lg shadow-brand-600/20 flex items-center justify-center gap-2 group disabled:opacity-75 disabled:cursor-not-allowed"
+          >
+            <span>Entrar no Sistema</span>
+            <i
+              data-lucide="arrow-right"
+              class="w-5 h-5 group-hover:translate-x-1 transition-transform"
+            ></i>
+          </button>
+        </form>
+        <p class="text-center text-xs text-slate-400 mt-8 font-medium">
+          Versão 5.6 Fixed Sort
+        </p>
+      </div>
+    </div>
+
+    <div id="app-layout" class="hidden h-full flex overflow-hidden bg-slate-50">
+      <div
+        id="mobile-overlay"
+        class="fixed inset-0 bg-slate-900/60 z-30 hidden xl:hidden backdrop-blur-sm transition-opacity"
+        onclick="App.toggleSidebar()"
+      ></div>
+
+      <aside
+        id="sidebar"
+        aria-label="Menu Principal"
+        class="fixed xl:static inset-y-0 left-0 z-40 w-72 xl:w-72 bg-slate-900 border-r border-slate-800 transform -translate-x-full xl:translate-x-0 transition-all duration-300 ease-in-out flex flex-col shadow-2xl xl:shadow-none overflow-x-hidden"
+      >
+        <div
+          class="h-16 flex items-center gap-3 px-6 border-b border-slate-800/50 bg-black/10 flex-shrink-0 cursor-pointer hover:bg-black/20 transition-colors"
+          onclick="App.navigate('dashboard')"
+        >
+          <div
+            class="bg-brand-500 p-2 rounded-xl shadow-lg shadow-brand-500/30"
+          >
+            <svg class="w-6 h-6 text-white fill-current">
+              <use href="#icon-brand-logo"></use>
+            </svg>
+          </div>
+          <div
+            id="sidebar-logo-text"
+            class="whitespace-nowrap transition-opacity duration-200"
+          >
+            <h1
+              class="font-bold text-lg text-white tracking-wide leading-tight"
+            >
+              SEROB
+            </h1>
+            <p
+              class="text-[10px] font-medium text-slate-400 uppercase tracking-widest"
+            >
+              Gestão de Estoque
+            </p>
+          </div>
+        </div>
+
+        <nav class="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+          <button
+            onclick="App.navigate('dashboard')"
+            id="nav-dashboard"
+            class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200"
+            title="Visão Geral"
+          >
+            <i data-lucide="layout-dashboard" class="w-5 h-5 shrink-0"></i>
+            <span class="sidebar-text whitespace-nowrap">Visão Geral</span>
+          </button>
+          <div>
+            <button
+              onclick="App.toggleSubmenu('submenu-material')"
+              id="nav-material"
+              class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all duration-200 group"
+              title="Material"
+            >
+              <div class="flex items-center gap-3">
+                <i
+                  data-lucide="package"
+                  class="w-5 h-5 shrink-0 group-hover:text-white transition-colors"
+                ></i>
+                <span class="sidebar-text whitespace-nowrap">Material</span>
+              </div>
+              <i
+                data-lucide="chevron-down"
+                id="arrow-material"
+                class="w-4 h-4 shrink-0 text-slate-400 transition-transform duration-200"
+              ></i>
+            </button>
+            <div id="submenu-material" class="hidden pl-4 pr-2 py-2 space-y-1">
+              <button
+                onclick="App.navigate('stock-search')"
+                id="nav-stock-search"
+                class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+                title="Pesquisa de Estoque"
+              >
+                <i data-lucide="search" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text whitespace-nowrap"
+                  >Pesquisa de Estoque</span
+                >
+              </button>
+              <button
+                onclick="App.navigate('stock-move')"
+                id="nav-stock-move"
+                class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+                title="Movimentações"
+              >
+                <i data-lucide="arrow-left-right" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text whitespace-nowrap"
+                  >Movimentações</span
+                >
+              </button>
+              <button
+                onclick="App.navigate('movement-search')"
+                id="nav-mov-search"
+                class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+                title="Histórico"
+              >
+                <i data-lucide="history" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text whitespace-nowrap">Histórico</span>
+              </button>
+              <button
+                onclick="App.navigate('material-register')"
+                id="nav-mat-register"
+                class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 transition-all"
+                title="Cadastro Manual"
+              >
+                <i data-lucide="plus-circle" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text whitespace-nowrap"
+                  >Cadastro Manual</span
+                >
+              </button>
+            </div>
+          </div>
+          <div class="pt-4 mt-4 border-t border-slate-800/50">
+            <button
+              onclick="App.navigate('saas-admin')"
+              id="nav-saas-admin"
+              class="hidden w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-purple-400 hover:bg-slate-800/50 hover:text-purple-300 transition-all duration-200"
+              title="Gestão do SaaS"
+            >
+              <i data-lucide="shield-check" class="w-5 h-5 shrink-0"></i>
+              <span class="sidebar-text whitespace-nowrap">Gestão do SaaS</span>
+            </button>
+          </div>
+        </nav>
+        <div
+          class="mt-auto border-t border-slate-800/50 p-4 hidden xl:flex justify-end"
+        >
+          <button
+            onclick="App.toggleDesktopSidebar()"
+            class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+            title="Recolher Menu"
+          >
+            <i
+              data-lucide="chevron-left"
+              id="sidebar-toggle-icon"
+              class="w-5 h-5 transition-transform duration-300"
+            ></i>
+          </button>
+        </div>
+      </aside>
+
+      <main
+        class="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-slate-50"
+      >
+        <header
+          class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 h-16 flex items-center justify-between px-4 xl:px-8 flex-shrink-0 z-30 sticky top-0"
+        >
+          <div class="flex items-center gap-4">
+            <button
+              onclick="App.toggleSidebar()"
+              class="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors xl:hidden"
+            >
+              <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <h2
+              id="topbar-title"
+              class="text-lg font-bold text-slate-900 tracking-tight"
+            >
+              Visão Geral
+            </h2>
+            <div
+              class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-50 border border-brand-100 rounded-lg text-[11px] font-bold text-brand-700 uppercase tracking-wider ml-2"
+            >
+              <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
+              <span id="tenant-name">Empresa Padrão</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="flex items-center justify-center gap-2 mr-4">
+              <div
+                class="w-2 h-2 rounded-full bg-green-500 animate-pulse"
+              ></div>
+              <span
+                class="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden md:block"
+                >Sistema Online</span
+              >
+            </div>
+            <div class="relative group">
+              <button
+                class="flex items-center gap-3 p-1 pr-3 rounded-full border border-slate-200/60 hover:bg-slate-50 hover:border-slate-300 transition-all bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              >
+                <div
+                  class="w-8 h-8 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center overflow-hidden text-brand-600"
+                  id="user-avatar"
+                ></div>
+                <div class="text-left hidden md:block">
+                  <p
+                    class="text-xs font-bold text-slate-900 leading-none"
+                    id="user-name"
+                  >
+                    Usuário
+                  </p>
+                  <p
+                    class="text-[10px] font-medium text-slate-500 mt-0.5 uppercase tracking-wider"
+                    id="user-role"
+                  >
+                    Função
+                  </p>
+                </div>
+                <i
+                  data-lucide="chevron-down"
+                  class="w-4 h-4 text-slate-400 ml-1"
+                ></i>
+              </button>
+
+              <div
+                class="absolute right-0 top-full mt-2 w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right z-50"
+              >
+                <div
+                  class="bg-white rounded-2xl shadow-xl border border-slate-100 p-2"
+                >
+                  <div id="admin-tools" class="hidden">
+                    <label
+                      class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors"
+                    >
+                      <i
+                        data-lucide="file-spreadsheet"
+                        class="w-4 h-4 text-brand-500"
+                      ></i>
+                      Importar CSV
+                      <input
+                        type="file"
+                        accept=".csv"
+                        class="hidden"
+                        onchange="App.handleFileUpload(event)"
+                      />
+                    </label>
+                    <button
+                      onclick="App.resetData()"
+                      class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                    >
+                      <i data-lucide="trash-2" class="w-4 h-4"></i> Resetar
+                      Dados
+                    </button>
+                    <div class="border-t border-slate-100 my-1"></div>
+                  </div>
+                  <button
+                    onclick="App.openPasswordModal()"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <i data-lucide="key" class="w-4 h-4 text-slate-400"></i>
+                    Alterar Senha
+                  </button>
+                  <button
+                    onclick="App.logout()"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors mt-1"
+                  >
+                    <i data-lucide="log-out" class="w-4 h-4"></i> Sair do
+                    Sistema
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div
+          id="content-area"
+          class="flex-1 overflow-y-auto p-4 xl:p-8 custom-scrollbar scroll-smooth relative"
+        ></div>
+
+        <button
+          id="back-to-top"
+          onclick="App.scrollToTop()"
+          class="absolute bottom-6 right-6 z-40 p-3 bg-brand-600 text-white rounded-full shadow-lg shadow-brand-600/30 opacity-0 translate-y-10 pointer-events-none transition-all duration-300 hover:bg-brand-700 active:scale-95"
+          aria-label="Voltar ao topo"
+        >
+          <i data-lucide="arrow-up" class="w-5 h-5"></i>
+        </button>
+      </main>
+    </div>
+
+    <div
+      id="modal-movement"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-mov-title"
+      class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none"
+    >
+      <div
+        class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
+        id="modal-movement-content"
+      >
+        <div class="flex justify-between items-start mb-6">
+          <div>
+            <h3
+              id="modal-mov-title"
+              class="text-xl font-bold text-slate-900 tracking-tight"
+            >
+              Registrar Entrada
+            </h3>
+            <p
+              id="modal-mov-item"
+              class="text-sm font-medium text-slate-500 mt-1"
+            >
+              Nome do Item
+            </p>
+          </div>
+          <button
+            onclick="ModalManager.close('modal-movement')"
+            aria-label="Fechar Modal"
+            class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1 rounded-full transition-colors"
+          >
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+        <div
+          class="bg-slate-50 p-5 rounded-xl mb-6 border border-slate-100 flex justify-between items-center shadow-inner"
+        >
+          <div>
+            <p
+              class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"
+            >
+              Estoque Atual
+            </p>
+            <p
+              id="modal-mov-current"
+              class="text-2xl font-mono text-slate-700 font-semibold"
+            >
+              0
+            </p>
+          </div>
+          <div class="h-8 w-px bg-slate-200"></div>
+          <div class="text-right">
+            <p
+              class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"
+            >
+              Novo Saldo
+            </p>
+            <p
+              id="modal-mov-new"
+              class="text-2xl font-mono font-bold text-slate-900"
+            >
+              0
+            </p>
+          </div>
+        </div>
+        <div class="mb-5">
+          <label class="block text-sm font-semibold text-slate-700 mb-2"
+            >Quantidade</label
+          >
+          <div class="relative">
+            <input
+              type="number"
+              id="modal-mov-qty"
+              min="1"
+              value="1"
+              oninput="InventoryController.calculateNewStock()"
+              class="w-full px-4 py-3 text-lg font-medium border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-shadow"
+              placeholder="0"
+            />
+            <div
+              class="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col"
+            >
+              <button
+                onclick="InventoryController.adjustQty(1)"
+                class="text-slate-400 hover:text-brand-600"
+              >
+                <i data-lucide="chevron-up" class="w-4 h-4"></i>
+              </button>
+              <button
+                onclick="InventoryController.adjustQty(-1)"
+                class="text-slate-400 hover:text-brand-600"
+              >
+                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-8">
+          <label class="block text-sm font-semibold text-slate-700 mb-2"
+            >Motivo / Observação
+            <span class="text-slate-400 font-normal text-xs"
+              >(Opcional)</span
+            ></label
+          >
+          <textarea
+            id="modal-mov-reason"
+            rows="2"
+            class="w-full px-4 py-3 text-sm font-medium border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-shadow resize-none"
+            placeholder="Ex: Recebimento ou ajuste manual..."
+          ></textarea>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            onclick="ModalManager.close('modal-movement')"
+            class="flex-1 px-4 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all"
+          >
+            Cancelar
+          </button>
+          <button
+            id="modal-mov-confirm"
+            onclick="InventoryController.confirmMovement()"
+            class="flex-1 px-4 py-3 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed"
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="modal-details"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="detail-desc"
+      class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none"
+    >
+      <div
+        class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 transform scale-95 transition-all duration-300"
+        id="modal-details-content"
+      >
+        <div
+          class="flex justify-between items-start mb-6 pb-4 border-b border-slate-100"
+        >
+          <div>
+            <h3
+              class="text-xl font-bold text-slate-900 tracking-tight"
+              id="detail-desc"
+            >
+              Nome do Material
+            </h3>
+            <p class="text-sm font-medium text-slate-500 mt-1" id="detail-cat">
+              Categoria
+            </p>
+          </div>
+          <button
+            onclick="ModalManager.close('modal-details')"
+            aria-label="Fechar Detalhes"
+            class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-full transition-colors"
+          >
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+        <div class="grid grid-cols-12 gap-6">
+          <div class="col-span-12 md:col-span-6 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p
+                  class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+                >
+                  Código
+                </p>
+                <div
+                  class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700"
+                  id="detail-codigo"
+                ></div>
+              </div>
+              <div>
+                <p
+                  class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+                >
+                  Cód. Interno
+                </p>
+                <div
+                  class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700"
+                  id="detail-interno"
+                ></div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p
+                  class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+                >
+                  Unid. Entrada
+                </p>
+                <div
+                  class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700"
+                  id="detail-uni-ent"
+                ></div>
+              </div>
+              <div>
+                <p
+                  class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+                >
+                  Unid. Saída
+                </p>
+                <div
+                  class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700"
+                  id="detail-uni-sai"
+                ></div>
+              </div>
+            </div>
+            <div>
+              <p
+                class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+              >
+                Situação
+              </p>
+              <div
+                class="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+              >
+                <label
+                  class="flex items-center gap-2 cursor-not-allowed opacity-75"
+                  ><input
+                    type="radio"
+                    name="detail-status"
+                    id="status-ativo"
+                    disabled
+                    class="text-brand-600 focus:ring-brand-500"
+                  /><span class="text-sm text-slate-700">Ativo</span></label
+                >
+                <label
+                  class="flex items-center gap-2 cursor-not-allowed opacity-75"
+                  ><input
+                    type="radio"
+                    name="detail-status"
+                    id="status-inativo"
+                    disabled
+                    class="text-slate-400 focus:ring-slate-400"
+                  /><span class="text-sm text-slate-700">Inativo</span></label
+                >
+              </div>
+            </div>
+          </div>
+          <div class="col-span-12 md:col-span-6 space-y-4">
+            <div>
+              <p
+                class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+              >
+                Conversão de Saída
+              </p>
+              <div
+                class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700 text-right"
+                id="detail-conversao"
+              ></div>
+            </div>
+          </div>
+          <div class="col-span-12 pt-4 border-t border-slate-100">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div
+                class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center shadow-sm"
+              >
+                <p
+                  class="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1"
+                >
+                  Estoque Atual
+                </p>
+                <p
+                  class="text-3xl font-bold text-blue-700 font-mono"
+                  id="detail-est-atual"
+                >
+                  0
+                </p>
+              </div>
+              <div
+                class="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center shadow-sm"
+              >
+                <p
+                  class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1"
+                >
+                  Estoque Reuso
+                </p>
+                <p
+                  class="text-3xl font-bold text-slate-600 font-mono"
+                  id="detail-est-reuso"
+                >
+                  0
+                </p>
+              </div>
+              <div
+                class="bg-purple-50 border border-purple-100 p-4 rounded-xl text-center shadow-sm"
+              >
+                <p
+                  class="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1"
+                >
+                  Estoque Total
+                </p>
+                <p
+                  class="text-3xl font-bold text-purple-700 font-mono"
+                  id="detail-est-total"
+                >
+                  0
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="modal-password"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-password-title"
+      class="fixed inset-0 bg-slate-900/60 z-50 hidden items-center justify-center p-4 backdrop-blur-sm transition-opacity opacity-0 pointer-events-none"
+    >
+      <div
+        class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-all duration-300"
+        id="modal-password-content"
+      >
+        <div class="flex justify-between items-start mb-6">
+          <div>
+            <h3
+              id="modal-password-title"
+              class="text-xl font-bold text-slate-900 tracking-tight"
+            >
+              Alterar Senha
+            </h3>
+            <p class="text-sm font-medium text-slate-500 mt-1">
+              Defina uma nova senha para sua conta
+            </p>
+          </div>
+          <button
+            onclick="ModalManager.close('modal-password')"
+            aria-label="Fechar Alterar Senha"
+            class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1 rounded-full transition-colors"
+          >
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+        <form onsubmit="AuthController.changePassword(event)" class="space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5"
+              >Senha Atual</label
+            >
+            <input
+              type="password"
+              id="pwd-current"
+              autocomplete="current-password"
+              class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5"
+              >Nova Senha</label
+            >
+            <input
+              type="password"
+              id="pwd-new"
+              autocomplete="new-password"
+              class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+              required
+              minlength="6"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5"
+              >Confirmar Nova Senha</label
+            >
+            <input
+              type="password"
+              id="pwd-confirm"
+              autocomplete="new-password"
+              class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+              required
+              minlength="6"
+            />
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button
+              type="button"
+              onclick="ModalManager.close('modal-password')"
+              class="flex-1 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="flex-1 px-4 py-2.5 rounded-xl font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 transition-all disabled:opacity-75 disabled:cursor-not-allowed"
+            >
+              Salvar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL DE ONBOARDING -->
+    <div
+      id="modal-onboarding"
+      role="dialog"
+      aria-modal="true"
+      class="fixed inset-0 bg-slate-900/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-md transition-opacity opacity-0 pointer-events-none"
+    >
+      <div
+        class="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden transform scale-95 transition-all duration-500"
+        id="modal-onboarding-content"
+      >
+        <div class="bg-brand-600 p-8 text-center relative overflow-hidden">
+          <div
+            class="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2"
+          ></div>
+          <i
+            data-lucide="rocket"
+            class="w-14 h-14 text-white mx-auto mb-4 animate-bounce"
+          ></i>
+          <h2 class="text-2xl font-extrabold text-white tracking-tight">
+            Bem-vindo ao Novo Nível!
+          </h2>
+        </div>
+        <div class="p-8">
+          <p class="text-slate-600 mb-6 text-center text-sm leading-relaxed">
+            Sua conta SaaS foi criada com sucesso. Para criarmos o seu espaço de
+            trabalho isolado e seguro, por favor, nos diga o nome da sua
+            empresa.
+          </p>
+
+          <div class="mb-8">
+            <label
+              class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"
+              >Nome da Empresa / Inquilino</label
+            >
+            <input
+              type="text"
+              id="onboard-company"
+              placeholder="Ex: Minha Empresa LTDA"
+              class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all font-semibold text-slate-700"
+            />
+          </div>
+
+          <ul class="space-y-4 mb-8">
+            <li class="flex items-start gap-3">
+              <div
+                class="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg shrink-0 mt-0.5"
+              >
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              </div>
+              <span class="text-xs font-medium text-slate-700"
+                >Banco de dados criptografado e isolado (Multi-tenant).</span
+              >
+            </li>
+            <li class="flex items-start gap-3">
+              <div
+                class="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg shrink-0 mt-0.5"
+              >
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              </div>
+              <span class="text-xs font-medium text-slate-700"
+                >Acesso liberado ao Painel de BI e Inteligência
+                Artificial.</span
+              >
+            </li>
+          </ul>
+          <button
+            onclick="App.completeOnboarding()"
+            class="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-600/20 transition-all active:scale-95 flex justify-center items-center gap-2"
+          >
+            Configurar Meu Ambiente
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.showLogin = () => {
+        document.getElementById("landing-layout").classList.add("hidden");
+        document.getElementById("login-layout").classList.remove("hidden");
+        document.getElementById("login-layout").classList.add("flex");
+        lucide.createIcons();
+      };
+      window.showLanding = () => {
+        document.getElementById("login-layout").classList.add("hidden");
+        document.getElementById("login-layout").classList.remove("flex");
+        document.getElementById("landing-layout").classList.remove("hidden");
+        lucide.createIcons();
+      };
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

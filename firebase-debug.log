@@ -1,0 +1,80 @@
+[debug] [2026-03-19T15:50:41.132Z] ----------------------------------------------------------------------
+[debug] [2026-03-19T15:50:41.137Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\p_919949\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init hosting:github
+[debug] [2026-03-19T15:50:41.138Z] CLI Version:   15.11.0
+[debug] [2026-03-19T15:50:41.138Z] Platform:      win32
+[debug] [2026-03-19T15:50:41.138Z] Node Version:  v24.11.1
+[debug] [2026-03-19T15:50:41.138Z] Time:          Thu Mar 19 2026 12:50:41 GMT-0300 (Horário Padrão de Brasília)
+[debug] [2026-03-19T15:50:41.138Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\p_919949\OneDrive\projetos-vscode\gestão-de-estoque-v2
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-03-19T15:51:04.269Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-03-19T15:51:04.270Z] > authorizing via signed-in user (jeffin.araujo.1990@gmail.com)
+[debug] [2026-03-19T15:51:04.271Z] Checked if tokens are valid: true, expires at: 1773937042410
+[debug] [2026-03-19T15:51:04.271Z] Checked if tokens are valid: true, expires at: 1773937042410
+[debug] [2026-03-19T15:51:04.272Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/gestao-de-estoque-20615 [none]
+[debug] [2026-03-19T15:51:04.887Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/gestao-de-estoque-20615 200
+[debug] [2026-03-19T15:51:04.887Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/gestao-de-estoque-20615 {"projectId":"gestao-de-estoque-20615","projectNumber":"925516712156","displayName":"gestao-de-estoque-v2","name":"projects/gestao-de-estoque-20615","resources":{"hostingSite":"gestao-de-estoque-20615"},"state":"ACTIVE","etag":"1_f4b96589-8aca-4608-896a-21f8b24f2b0c"}
+[info] i  Using project gestao-de-estoque-20615 (gestao-de-estoque-v2) . 
+[info] 
+=== Hosting:github Setup
+[info] 
+[info] i  Didn't detect a .git folder. Assuming C:\Users\p_919949\OneDrive\projetos-vscode\gestão-de-estoque-v2 is the project root. 
+[info] i  Authorizing with GitHub to upload your service account to a GitHub repository's secrets store. 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://github.com/login/oauth/authorize?client_id=89cf50f02ac6aaed3484&state=145485525&redirect_uri=http%3A%2F%2Flocalhost%3A9005&scope=read%3Auser%20repo%20public_repo
+[info] 
+[info] Waiting for authentication...
+[debug] [2026-03-19T15:51:06.325Z] >>> [apiv2][query] POST https://github.com/login/oauth/access_token [none]
+[debug] [2026-03-19T15:51:06.325Z] >>> [apiv2][body] POST https://github.com/login/oauth/access_token [stream]
+[debug] [2026-03-19T15:51:07.526Z] <<< [apiv2][status] POST https://github.com/login/oauth/access_token 200
+[debug] [2026-03-19T15:51:07.526Z] <<< [apiv2][body] POST https://github.com/login/oauth/access_token {"access_token":"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","token_type":"bearer","scope":"read:user,repo"}
+[debug] [2026-03-19T15:51:07.529Z] >>> [apiv2][query] GET https://api.github.com/user [none]
+[debug] [2026-03-19T15:51:07.877Z] <<< [apiv2][status] GET https://api.github.com/user 200
+[debug] [2026-03-19T15:51:07.877Z] <<< [apiv2][body] GET https://api.github.com/user {"login":"smithnaguxi90","id":179541587,"node_id":"U_kgDOCrOWUw","avatar_url":"https://avatars.githubusercontent.com/u/179541587?v=4","gravatar_id":"","url":"https://api.github.com/users/smithnaguxi90","html_url":"https://github.com/smithnaguxi90","followers_url":"https://api.github.com/users/smithnaguxi90/followers","following_url":"https://api.github.com/users/smithnaguxi90/following{/other_user}","gists_url":"https://api.github.com/users/smithnaguxi90/gists{/gist_id}","starred_url":"https://api.github.com/users/smithnaguxi90/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/smithnaguxi90/subscriptions","organizations_url":"https://api.github.com/users/smithnaguxi90/orgs","repos_url":"https://api.github.com/users/smithnaguxi90/repos","events_url":"https://api.github.com/users/smithnaguxi90/events{/privacy}","received_events_url":"https://api.github.com/users/smithnaguxi90/received_events","type":"User","user_view_type":"private","site_admin":false,"name":null,"company":null,"blog":"","location":null,"email":"jeffin.araujo.1990@gmail.com","hireable":null,"bio":null,"twitter_username":null,"notification_email":"jeffin.araujo.1990@gmail.com","public_repos":25,"public_gists":0,"followers":0,"following":0,"created_at":"2024-08-26T23:51:57Z","updated_at":"2026-03-16T16:08:35Z","private_gists":0,"total_private_repos":0,"owned_private_repos":0,"disk_usage":156347,"collaborators":0,"two_factor_authentication":false,"plan":{"name":"free","space":976562499,"collaborators":0,"private_repos":10000}}
+[info] 
+[info] +  Success! Logged into GitHub as smithnaguxi90 
+[info] 
+[debug] [2026-03-19T15:57:40.035Z] >>> [apiv2][query] GET https://api.github.com/repos/echo "# gest-o-de-estoque-v2" >> README.md/actions/secrets/public-key type=owner
+[debug] [2026-03-19T15:57:40.367Z] <<< [apiv2][status] GET https://api.github.com/repos/echo "# gest-o-de-estoque-v2" >> README.md/actions/secrets/public-key 404
+[debug] [2026-03-19T15:57:40.368Z] <<< [apiv2][body] GET https://api.github.com/repos/echo "# gest-o-de-estoque-v2" >> README.md/actions/secrets/public-key {"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}
+[info] 
+[info] 
+[error] !  The provided authorization cannot be used with this repository. If this repository is in an organization, did you remember to grant access? 
+[info] 
+[info] i  Action required: Visit this URL to ensure access has been granted to the appropriate organization(s) for the Firebase CLI GitHub OAuth App: 
+[info] https://github.com/settings/connections/applications/89cf50f02ac6aaed3484
+[info] 
+[debug] [2026-03-19T15:57:43.391Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (C:\Users\p_919949\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\@inquirer\core\dist\commonjs\lib\create-prompt.js:101:37)
+    at Interface.emit (node:events:508:28)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1317:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:284:20)
+    at ReadStream.emit (node:events:520:35)
+    at emitKeys (node:internal/readline/utils:371:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+    at ReadStream.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+[error] 
+[error] Error: An unexpected error has occurred.

@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuth() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /items/{item} {
+      allow read: if isAuth();
+      allow write: if isAuth(); // Permitido para usuários atualizarem o estoque
+      allow delete: if isAdmin(); // Apenas Admin apaga material
+    }
+    
+    match /movements/{movement} {
+      allow read, create: if isAuth();
+      allow update, delete: if isAdmin(); // Apenas Admin altera histórico
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+    
+    match /{document=**} {
+      allow read, write: if false; // Bloqueia qualquer outra coleção não mapeada
+    }
+  }
+}
