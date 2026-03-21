@@ -109,11 +109,29 @@ const FirestoreService = {
                 loginLayout.classList.add("hidden");
                 loginLayout.classList.remove("flex");
               }
+              const registerLayout = document.getElementById("register-layout");
+              if (registerLayout) {
+                registerLayout.classList.add("hidden");
+                registerLayout.classList.remove("flex");
+              }
               const landingLayout = document.getElementById("landing-layout");
               if (landingLayout) landingLayout.classList.remove("hidden");
             }
+            
+            if (window.App && typeof window.App.updateLandingUI === "function") {
+              window.App.updateLandingUI();
+            }
           } catch (err) {
             console.error("Falha no handler de auth:", err);
+            if (err.message === "ACCOUNT_DISABLED") {
+              try {
+                ToastManager?.show?.(
+                  "Sua conta foi desativada pelo administrador.",
+                  "error",
+                );
+              } catch {}
+              AuthService.logout();
+            }
           } finally {
             if (!resolved) {
               resolved = true;
@@ -155,16 +173,19 @@ const FirestoreService = {
         name: "Antônio",
         role: "user",
         label: "Usuário",
+        plan: "enterprise",
       },
       "jesse.anjos@camara.leg.br": {
         name: "Jessé",
         role: "user",
         label: "Usuário",
+        plan: "enterprise",
       },
       "jefferson.araujo@camara.leg.br": {
         name: "Jefferson",
         role: "admin",
         label: "Administrador",
+        plan: "enterprise",
       },
     };
 
@@ -179,12 +200,14 @@ const FirestoreService = {
     const desiredRole = preset?.role || "user";
     const desiredLabel =
       preset?.label || (desiredRole === "admin" ? "Administrador" : "Usuário");
+    const desiredPlan = preset?.plan || "starter";
 
     this.profile = this.profile || {
       uid,
       name: desiredName,
       label: desiredLabel,
       role: desiredRole,
+      plan: desiredPlan,
       active: true,
       email: user.email || null,
       tenantName: "COENG | DETEC", // Padrão SaaS fallback
@@ -200,6 +223,7 @@ const FirestoreService = {
         name: desiredName,
         role: desiredRole,
         label: desiredLabel,
+        plan: desiredPlan,
         active: true,
         tenantName: "Nova Empresa",
         createdAt: serverTimestamp(),
@@ -235,11 +259,15 @@ const FirestoreService = {
       }
     } else {
       const data = snap.data() || {};
+      if (data.active === false) {
+        throw new Error("ACCOUNT_DISABLED");
+      }
       const patch = {};
       if (!data.uid) patch.uid = uid;
       if (!data.email && user.email) patch.email = user.email;
       if (!data.name) patch.name = desiredName;
       if (!data.role && desiredRole) patch.role = desiredRole;
+      if (!data.plan) patch.plan = desiredPlan;
       patch.lastLoginAt = serverTimestamp(); // Controle de Sessão
       if (!data.tenantName) patch.tenantName = "COENG | DETEC";
       if (!data.label) {
@@ -446,6 +474,32 @@ const FirestoreService = {
     );
   },
 
+  async toggleFavorite(itemId) {
+    const u = auth.currentUser;
+    if (!u || !this.profile) return;
+
+    let favs = this.profile.favorites || [];
+    const strId = String(itemId);
+    if (favs.includes(strId)) {
+      favs = favs.filter((id) => id !== strId);
+    } else {
+      favs.push(strId);
+    }
+    this.profile.favorites = favs;
+
+    try {
+      await setDoc(
+        doc(db, "users", u.uid),
+        { favorites: favs },
+        { merge: true },
+      );
+      if (window.App && typeof window.App.refreshUI === "function")
+        window.App.refreshUI();
+    } catch (e) {
+      console.error("Erro ao favoritar:", e);
+    }
+  },
+
   checkAndMigrateItems() {
     const batch = writeBatch(db);
     let hasUpdates = false;
@@ -518,6 +572,68 @@ const FirestoreService = {
     }
   },
 
+  async handleRegister(e) {
+    e.preventDefault();
+    const email = document.getElementById("register-username").value;
+    const pass = document.getElementById("register-password").value;
+    const name = document.getElementById("register-name")?.value || "";
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i data-lucide="loader" class="w-5 h-5 animate-spin"></i>`;
+    lucide.createIcons();
+    btn.disabled = true;
+
+    // Verificação de Força da Senha (Letras, Números e min 6 caracteres)
+    const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d).{6,}$/;
+    if (!passwordRegex.test(pass)) {
+      const errEl = document.getElementById("register-error");
+      if (errEl) {
+        errEl.querySelector("span").textContent =
+          "A senha deve conter letras, números e no mínimo 6 caracteres.";
+        errEl.classList.remove("hidden");
+        errEl.classList.add("flex");
+        setTimeout(() => errEl.classList.add("hidden"), 5000);
+      }
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      lucide.createIcons();
+      return;
+    }
+
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+      if (name) {
+        // Pré-salva o nome escolhido no perfil do usuário no Firestore
+        await setDoc(
+          doc(db, "users", userCred.user.uid),
+          { name: name },
+          { merge: true },
+        );
+      }
+      const errEl = document.getElementById("register-error");
+      errEl?.classList.add("hidden");
+    } catch (err) {
+      console.error(err);
+      const errEl = document.getElementById("register-error");
+      let msg = "Erro ao criar conta. Tente novamente.";
+      if (err.code === "auth/email-already-in-use")
+        msg = "Este email já está em uso.";
+      else if (err.code === "auth/weak-password")
+        msg = "A senha deve ter pelo menos 6 caracteres.";
+      else if (err.code === "auth/invalid-email") msg = "Email inválido.";
+
+      if (errEl) {
+        errEl.querySelector("span").textContent = msg;
+        errEl.classList.remove("hidden");
+        errEl.classList.add("flex");
+        setTimeout(() => errEl.classList.add("hidden"), 4000);
+      }
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      lucide.createIcons();
+    }
+  },
+
   async updateUserPassword(username, newHash) {
     try {
       const userRef = doc(db, "users", username);
@@ -568,17 +684,62 @@ const FirestoreService = {
     if (!AuthService.isAdmin()) {
       throw new Error("permission-denied");
     }
-    for (let i = 0; i < this.items.length; i += 500) {
-      const chunk = this.items.slice(i, i + 500);
-      const batch = writeBatch(db);
-      chunk.forEach((item) => {
-        const docRef = doc(db, "items", String(item.id));
-        batch.delete(docRef);
-      });
-      await batch.commit();
+
+    try {
+      const collectionsToClear = ["items", "movements"];
+      for (const colName of collectionsToClear) {
+        const snap = await getDocs(collection(db, colName));
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+          const chunk = docs.slice(i, i + 500);
+          const batch = writeBatch(db);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao resetar dados", e);
     }
+
     localStorage.removeItem("serob_db_items");
     location.reload();
+  },
+
+  async updateItem(id, updates) {
+    if (!AuthService.isAdmin()) throw new Error("permission-denied");
+    try {
+      const docRef = doc(db, "items", String(id));
+      await updateDoc(docRef, updates);
+      return true;
+    } catch (e) {
+      console.error("Erro ao atualizar item:", e);
+      return false;
+    }
+  },
+
+  async deleteItem(id) {
+    if (!AuthService.isAdmin()) throw new Error("permission-denied");
+    try {
+      const docRef = doc(db, "items", String(id));
+      await deleteDoc(docRef);
+      return true;
+    } catch (e) {
+      console.error("Erro ao excluir item:", e);
+      return false;
+    }
+  },
+
+  async getUsers() {
+    if (!AuthService.isAdmin()) throw new Error("permission-denied");
+    const snap = await getDocs(collection(db, "users"));
+    return snap.docs.map((d) => d.data());
+  },
+
+  async toggleUserStatus(uid, currentStatus) {
+    if (!AuthService.isAdmin()) throw new Error("permission-denied");
+    const docRef = doc(db, "users", uid);
+    await updateDoc(docRef, { active: !currentStatus });
+    return !currentStatus;
   },
 };
 
@@ -708,6 +869,7 @@ const AuthService = {
           name: u.name,
           role: "user",
           label: "Usuário",
+          plan: "enterprise",
           active: true,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -838,6 +1000,105 @@ const AuthController = {
       lucide.createIcons();
     }
   },
+  async handleDemoLogin(btn) {
+    const originalHTML = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.innerHTML = `<i data-lucide="loader" class="w-5 h-5 text-slate-400 animate-spin"></i> Acessando...`;
+      btn.disabled = true;
+      lucide.createIcons();
+    }
+
+    const demoEmail = "demo@serob.com";
+    const demoPass = "demo1234";
+
+    try {
+      await AuthService.login(demoEmail, demoPass, false);
+      const errEl = document.getElementById("login-error");
+      errEl?.classList.add("hidden");
+
+      // ROTINA DE LIMPEZA DIÁRIA PARA A CONTA DEMO
+      const user = auth.currentUser;
+      if (user) {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          const lastReset = data.lastReset?.toDate() || new Date(0);
+          const now = new Date();
+          const isSameDay =
+            lastReset.getDate() === now.getDate() &&
+            lastReset.getMonth() === now.getMonth() &&
+            lastReset.getFullYear() === now.getFullYear();
+
+          if (!isSameDay) {
+            if (btn) {
+              btn.innerHTML = `<i data-lucide="loader" class="w-5 h-5 text-slate-400 animate-spin"></i> Restaurando ambiente...`;
+              lucide.createIcons();
+            }
+            await setDoc(
+              doc(db, "users", user.uid),
+              { lastReset: serverTimestamp() },
+              { merge: true },
+            );
+            await FirestoreService.resetData();
+            return; // A página vai recarregar automaticamente no resetData
+          }
+        }
+      }
+
+      App.initLayout();
+    } catch (err) {
+      // Se a conta não existe, cria ela invisivelmente na hora
+      if (
+        err.code === "auth/invalid-credential" ||
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/wrong-password"
+      ) {
+        try {
+          const userCred = await createUserWithEmailAndPassword(
+            auth,
+            demoEmail,
+            demoPass,
+          );
+          await setDoc(
+            doc(db, "users", userCred.user.uid),
+            {
+              uid: userCred.user.uid,
+              email: demoEmail,
+              name: "Visitante Demo",
+              role: "admin", // Admin para permitir explorar tudo
+              label: "Modo Demonstração",
+              plan: "enterprise",
+              active: true,
+              tenantName: "Empresa Demonstrativa",
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              lastReset: serverTimestamp(), // Registra a data da limpeza
+            },
+            { merge: true },
+          );
+          App.initLayout();
+        } catch (createErr) {
+          console.error("Erro ao gerar conta demo:", createErr);
+          ToastManager.show(
+            "Falha ao gerar ambiente de demonstração.",
+            "error",
+          );
+        }
+      } else {
+        console.error(err);
+        ToastManager.show(
+          "Erro de conexão ao acessar a demonstração.",
+          "error",
+        );
+      }
+    } finally {
+      if (btn) {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        lucide.createIcons();
+      }
+    }
+  },
   async changePassword(e) {
     e.preventDefault();
     const current = document.getElementById("pwd-current").value;
@@ -914,6 +1175,8 @@ const InventoryController = {
     currentExportData: null,
     currentPage: 1,
     itemsPerPage: 50,
+    sortCol: "descricao",
+    sortDesc: false,
   },
   openMovementModal(itemId, type = "entrada") {
     const item = FirestoreService.items.find(
@@ -1069,6 +1332,16 @@ const InventoryController = {
     this.state.currentPage += delta;
     App.renderTableRows();
   },
+  sortItems(col) {
+    if (this.state.sortCol === col) {
+      this.state.sortDesc = !this.state.sortDesc;
+    } else {
+      this.state.sortCol = col;
+      this.state.sortDesc = false;
+    }
+    this.state.currentPage = 1;
+    App.renderTableRows();
+  },
 
   handleDescricaoAutoFill() {
     try {
@@ -1218,6 +1491,89 @@ const InventoryController = {
     btn.innerText = originalText;
     btn.disabled = false;
   },
+
+  openEditModal(itemId) {
+    const item = FirestoreService.items.find(
+      (i) => String(i.id) === String(itemId),
+    );
+    if (!item) {
+      ToastManager.show("Material não encontrado.", "error");
+      return;
+    }
+    document.getElementById("edit-id").value = item.id;
+    document.getElementById("edit-descricao").value = item.descricao || "";
+    document.getElementById("edit-codigo-interno").value =
+      item.codigoInterno || "";
+    document.getElementById("edit-codigo").value = item.codigo || "";
+    document.getElementById("edit-categoria").value = item.categoria || "";
+    document.getElementById("edit-unidade").value =
+      item.unidade || item.unidadeEntrada || "";
+    document.getElementById("edit-minimo").value = item.estoqueMinimo || 0;
+    document.getElementById("edit-ressup").value = item.qtdRessuprimento || 0;
+
+    ModalManager.open("modal-edit-item");
+  },
+
+  async saveEditItem(e) {
+    e.preventDefault();
+    const id = document.getElementById("edit-id").value;
+    const updates = {
+      descricao: document.getElementById("edit-descricao").value.trim(),
+      codigoInterno: document
+        .getElementById("edit-codigo-interno")
+        .value.trim(),
+      codigo: document.getElementById("edit-codigo").value.trim(),
+      categoria: document.getElementById("edit-categoria").value.trim(),
+      unidade: document.getElementById("edit-unidade").value.trim(),
+      estoqueMinimo:
+        parseFloat(document.getElementById("edit-minimo").value) || 0,
+      qtdRessuprimento:
+        parseFloat(document.getElementById("edit-ressup").value) || 0,
+    };
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = "Salvando...";
+    btn.disabled = true;
+    try {
+      const success = await FirestoreService.updateItem(id, updates);
+      if (success) {
+        ToastManager.show("Material atualizado com sucesso!");
+        ModalManager.close("modal-edit-item");
+      } else {
+        ToastManager.show("Erro ao atualizar material.", "error");
+      }
+    } catch (err) {
+      ToastManager.show(
+        err.message === "permission-denied"
+          ? "Acesso negado."
+          : "Erro inesperado.",
+        "error",
+      );
+    }
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  },
+
+  async deleteItem(itemId) {
+    if (
+      !confirm("Tem certeza que deseja excluir este material permanentemente?")
+    )
+      return;
+    try {
+      const success = await FirestoreService.deleteItem(itemId);
+      if (success)
+        ToastManager.show("Material excluído com sucesso!", "success");
+      else ToastManager.show("Erro ao excluir material.", "error");
+    } catch (err) {
+      ToastManager.show(
+        err.message === "permission-denied"
+          ? "Acesso negado."
+          : "Erro inesperado.",
+        "error",
+      );
+    }
+  },
+
   openStockDetailModal(itemId) {
     const item = FirestoreService.items.find(
       (i) => String(i.id) === String(itemId),
@@ -1320,10 +1676,36 @@ const InventoryController = {
       return;
     }
 
+    const tenantName = FirestoreService.profile?.tenantName || "Empresa";
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Título Principal (Esquerda)
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59); // text-slate-800
+    doc.text("SEROB", 14, 20);
+
+    // Título Secundário (Direita)
     doc.setFontSize(14);
-    doc.text("Relatório de Posição de Estoque - SEROB", 14, 15);
+    doc.text("Relatório de Posição de Estoque", pageWidth - 14, 18, {
+      align: "right",
+    });
+
+    // Subtítulo dinâmico (Direita)
     doc.setFontSize(10);
-    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 22);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139); // text-slate-500
+    doc.text(
+      `Emissão: ${new Date().toLocaleString("pt-BR")} | Empresa: ${tenantName}`,
+      pageWidth - 14,
+      24,
+      { align: "right" },
+    );
+
+    // Linha divisória fina cinza
+    doc.setDrawColor(226, 232, 240); // border-slate-200
+    doc.setLineWidth(0.5);
+    doc.line(14, 28, pageWidth - 14, 28);
 
     const tableData = data.map((item) => [
       item.codigo || "-",
@@ -1337,7 +1719,7 @@ const InventoryController = {
     ]);
 
     doc.autoTable({
-      startY: 28,
+      startY: 34,
       head: [
         [
           "Código",
@@ -1356,6 +1738,19 @@ const InventoryController = {
       headStyles: { fillColor: [37, 99, 235] },
     });
 
+    const pageCount = doc.internal.getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageWidth - 14,
+        doc.internal.pageSize.height - 10,
+        { align: "right" },
+      );
+    }
+
     doc.save(`relatorio_estoque_${new Date().getTime()}.pdf`);
     ToastManager.show("Relatório PDF gerado com sucesso!", "success");
   },
@@ -1370,6 +1765,47 @@ const App = {
   dashboardPeriod: 30,
   dashboardCategory: "Todas",
   isDesktopCollapsed: false,
+  isDarkMode: false,
+  historySortCol: "date",
+  historySortDesc: true,
+  sortHistory(col) {
+    if (this.historySortCol === col) {
+      this.historySortDesc = !this.historySortDesc;
+    } else {
+      this.historySortCol = col;
+      this.historySortDesc = false;
+    }
+    this.renderHistoryTableRows();
+  },
+  applyDarkMode() {
+    this.isDarkMode = localStorage.getItem("serob_dark_mode") === "true";
+    if (this.isDarkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    this.updateDarkModeUI();
+  },
+  toggleDarkMode() {
+    this.isDarkMode = !this.isDarkMode;
+    localStorage.setItem("serob_dark_mode", this.isDarkMode);
+    if (this.isDarkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    this.updateDarkModeUI();
+    if (this.currentTab === "dashboard") this.renderChart();
+  },
+  updateDarkModeUI() {
+    const icon = document.getElementById("dark-mode-icon");
+    const text = document.getElementById("dark-mode-text");
+    if (icon && text) {
+      icon.setAttribute("data-lucide", this.isDarkMode ? "sun" : "moon");
+      text.innerText = this.isDarkMode ? "Modo Claro" : "Modo Noturno";
+      lucide.createIcons();
+    }
+  },
   changeDashboardPeriod(days) {
     this.dashboardPeriod = days;
     this.renderDashboard();
@@ -1378,33 +1814,53 @@ const App = {
     this.dashboardCategory = cat;
     this.renderDashboard();
   },
+
+  // --- OTIMIZAÇÃO: Gerenciador de Views (Cache de Layout) ---
+  getOrCreateView(viewId) {
+    const container = document.getElementById("content-area");
+    // Oculta todas as outras telas criadas anteriormente
+    Array.from(container.children).forEach((child) =>
+      child.classList.add("hidden"),
+    );
+
+    let view = document.getElementById(`view-${viewId}`);
+    if (!view) {
+      view = document.createElement("div");
+      view.id = `view-${viewId}`;
+      view.className = "w-full h-full animate-fade-in";
+      container.appendChild(view);
+    }
+    view.classList.remove("hidden");
+    return view;
+  },
+
   toggleDesktopSidebar() {
     const sidebar = document.getElementById("sidebar");
     this.isDesktopCollapsed = !this.isDesktopCollapsed;
-    
+
     const texts = document.querySelectorAll(".sidebar-text");
     const logoText = document.getElementById("sidebar-logo-text");
     const arrow = document.getElementById("arrow-material");
     const icon = document.getElementById("sidebar-toggle-icon");
     const subMenu = document.getElementById("submenu-material");
-    
+
     if (this.isDesktopCollapsed) {
       sidebar.classList.replace("xl:w-72", "xl:w-20");
       if (subMenu && !subMenu.classList.contains("hidden")) {
-        this.toggleSubmenu('submenu-material', true); // Ignora a expansão automática
+        this.toggleSubmenu("submenu-material", true); // Ignora a expansão automática
       }
-      texts.forEach(t => t.classList.add("hidden"));
-      if(logoText) logoText.classList.add("hidden");
-      if(arrow) arrow.classList.add("hidden");
-      if(icon) icon.classList.add("rotate-180");
+      texts.forEach((t) => t.classList.add("hidden"));
+      if (logoText) logoText.classList.add("hidden");
+      if (arrow) arrow.classList.add("hidden");
+      if (icon) icon.classList.add("rotate-180");
     } else {
       sidebar.classList.replace("xl:w-20", "xl:w-72");
       setTimeout(() => {
-        texts.forEach(t => t.classList.remove("hidden"));
-        if(logoText) logoText.classList.remove("hidden");
-        if(arrow) arrow.classList.remove("hidden");
+        texts.forEach((t) => t.classList.remove("hidden"));
+        if (logoText) logoText.classList.remove("hidden");
+        if (arrow) arrow.classList.remove("hidden");
       }, 150);
-      if(icon) icon.classList.remove("rotate-180");
+      if (icon) icon.classList.remove("rotate-180");
     }
   },
   getPredictionModel(dashboardPeriod) {
@@ -1433,8 +1889,13 @@ const App = {
         sumY = 0,
         sumXY = 0,
         sumXX = 0;
+      let nonZeroDays = 0;
+      const dataPoints = [];
+
       for (let i = 0; i <= dashboardPeriod; i++) {
         const y = itemDaily[i] || 0;
+        if (y > 0) nonZeroDays++;
+        dataPoints.push(y);
         sumX += i;
         sumY += y;
         sumXY += i * y;
@@ -1446,26 +1907,59 @@ const App = {
       const b = (sumY - m * sumX) / n;
       const avg = sumY / n;
 
+      // IA: Cálculo de Variância e Desvio Padrão (Volatilidade)
+      const variance =
+        dataPoints.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / n;
+      const stdDev = Math.sqrt(variance);
+
       let projectedRate = avg;
       if (m !== 0) {
         const endRate = m * dashboardPeriod + b;
         projectedRate = Math.max(0, (endRate + avg) / 2); // Suaviza o peso da regressão
+        // Se a tendência for de alta, dá 70% de peso pro crescimento. Se for baixa, suaviza 50/50.
+        projectedRate =
+          m > 0 ? endRate * 0.7 + avg * 0.3 : Math.max(0, (endRate + avg) / 2);
       }
       if (avg === 0) projectedRate = 0;
+
+      // IA: Cálculo Avançado de Supply Chain
+      const leadTime = 7; // Assumindo default de 7 dias para o fornecedor entregar
+      const zScore = 1.65; // Z-Score para Nível de Serviço de 95% (Não faltar em 95% dos casos)
+      const safetyStock = Math.ceil(zScore * stdDev * Math.sqrt(leadTime));
+      const reorderPoint =
+        Math.ceil(projectedRate * leadTime) +
+        safetyStock +
+        Number(item.estoqueMinimo);
+
+      // Score de Confiança da IA (Baseado em consistência de dados no período)
+      const confidence = Math.min(
+        100,
+        Math.round((nonZeroDays / (dashboardPeriod * 0.4)) * 100),
+      );
 
       let suggQty = Math.max(
         Number(item.qtdRessuprimento) || 0,
         Number(item.estoqueMinimo) * 2 - Number(item.estoque),
       );
       if (projectedRate > 0) {
-        const optimalStock = Math.ceil(
-          projectedRate * dashboardPeriod + Number(item.estoqueMinimo),
-        );
+        const optimalStock =
+          Math.ceil(projectedRate * dashboardPeriod) +
+          safetyStock +
+          Number(item.estoqueMinimo);
         const needed = optimalStock - Number(item.estoque);
         if (needed > suggQty) suggQty = needed;
       }
 
-      return { m, avg, projectedRate, suggQty };
+      return {
+        m,
+        avg,
+        projectedRate,
+        suggQty,
+        stdDev,
+        safetyStock,
+        reorderPoint,
+        confidence,
+      };
     };
   },
   sendPurchaseAlert() {
@@ -1485,12 +1979,51 @@ const App = {
       lucide.createIcons();
     }
 
-    let body =
-      "Prezados(as) do setor de Compras,%0D%0A%0D%0AIdentificamos através do sistema preditivo que os seguintes itens atingiram nível crítico. As quantidades sugeridas foram projetadas por nossa IA visando a estabilidade do estoque:%0D%0A%0D%0A";
+    let plainText =
+      "Prezados(as),\n\nIdentificamos que os seguintes itens atingiram o nível crítico de estoque. Segue a sugestão de reposição projetada pela Inteligência Artificial:\n\n";
+    plainText +=
+      "+---------------+---------------------------------------+-------+---------+\n";
+    plainText +=
+      "| CÓDIGO        | MATERIAL                              | SALDO | COMPRAR |\n";
+    plainText +=
+      "+---------------+---------------------------------------+-------+---------+\n";
+
+    let totalComprar = 0;
+
     criticalItems.forEach((i) => {
       const { suggQty } = predictor(i);
-      body += `- ${i.codigo || "S/N"} | ${i.descricao} | Saldo Atual: ${i.estoque} | Sugestão Compra: ${suggQty}%0D%0A`;
+      const codigo = String(i.codigo || "S/N");
+      const saldo = String(i.estoque || 0);
+      const sug = String(suggQty || 0);
+      const desc = String(i.descricao || "");
+
+      const codigoPad = codigo.padEnd(15, " ");
+      const descPad = (
+        desc.length > 39 ? desc.substring(0, 36) + "..." : desc
+      ).padEnd(39, " ");
+      const saldoPad = saldo.padStart(5, " ");
+      const sugPad = sug.padStart(7, " ");
+
+      totalComprar += Number(suggQty) || 0;
+
+      plainText += `| ${codigoPad} | ${descPad} | ${saldoPad} | ${sugPad} |\n`;
     });
+
+    const spaceCode = "".padEnd(15, " ");
+    const labelTotal = "TOTAL A COMPRAR".padStart(39, " ");
+    const spaceSaldo = "".padStart(5, " ");
+    const valTotal = String(totalComprar).padStart(7, " ");
+
+    plainText +=
+      "+---------------+---------------------------------------+-------+---------+\n";
+    plainText += `| ${spaceCode} | ${labelTotal} | ${spaceSaldo} | ${valTotal} |\n`;
+    plainText +=
+      "+---------------+---------------------------------------+-------+---------+\n";
+
+    const bodyStr = encodeURIComponent(plainText);
+    const subjStr = encodeURIComponent(
+      "ALERTA PREDITIVO: Sugestão de Reposição de Estoque",
+    );
 
     setTimeout(() => {
       if (btn) {
@@ -1498,12 +2031,194 @@ const App = {
         btn.disabled = false;
         lucide.createIcons();
       }
-      window.location.href = `mailto:compras@suaempresa.com?subject=ALERTA AUTOMÁTICO: Previsão de Reposição de Estoque&body=${body}`;
+      window.location.href = `mailto:jefferson.araujo@camara.leg.br?subject=${subjStr}&body=${bodyStr}`;
       ToastManager.show(
-        "Alerta estruturado e enviado ao cliente de email!",
+        "Alerta estruturado e aberto no seu cliente de email!",
         "success",
       );
     }, 1200);
+  },
+  downloadPurchasePDF() {
+    const criticalItems = FirestoreService.items.filter(
+      (i) => (Number(i.estoque) || 0) <= (Number(i.estoqueMinimo) || 0),
+    );
+    if (criticalItems.length === 0)
+      return ToastManager.show("Nenhum item crítico para relatar.", "warning");
+
+    if (!window.jspdf) {
+      return ToastManager.show("Módulo PDF carregando...", "warning");
+    }
+
+    const predictor = this.getPredictionModel(this.dashboardPeriod);
+    const { jsPDF } = window.jspdf;
+    const docPdf = new jsPDF("portrait");
+
+    docPdf.setFontSize(16);
+    docPdf.text("Relatório Preditivo de Compras - SEROB", 14, 20);
+    docPdf.setFontSize(10);
+    docPdf.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 28);
+
+    const tableDataForPdf = [];
+    let totalComprar = 0;
+
+    criticalItems.forEach((i) => {
+      const { suggQty } = predictor(i);
+      totalComprar += Number(suggQty) || 0;
+      tableDataForPdf.push([
+        String(i.codigo || "S/N"),
+        String(i.descricao || ""),
+        String(i.estoque || 0),
+        String(suggQty || 0),
+      ]);
+    });
+
+    tableDataForPdf.push(["", "", "TOTAL GERAL:", String(totalComprar)]);
+
+    docPdf.autoTable({
+      startY: 35,
+      head: [["Código", "Material / Descrição", "Saldo Atual", "Comprar"]],
+      body: tableDataForPdf,
+      theme: "striped",
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [37, 99, 235] },
+    });
+
+    const pageCount = docPdf.internal.getNumberOfPages();
+    docPdf.setFontSize(8);
+    docPdf.setTextColor(100, 116, 139);
+    for (let i = 1; i <= pageCount; i++) {
+      docPdf.setPage(i);
+      docPdf.text(
+        `Página ${i} de ${pageCount}`,
+        docPdf.internal.pageSize.width - 14,
+        docPdf.internal.pageSize.height - 10,
+        { align: "right" },
+      );
+    }
+
+    docPdf.save(`sugestao_compras_${new Date().getTime()}.pdf`);
+    ToastManager.show(
+      "Lista de compras gerada e baixada com sucesso!",
+      "success",
+    );
+  },
+  exportDashboardToPDF() {
+    if (!window.jspdf) {
+      ToastManager.show("Módulo PDF carregando...", "warning");
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF("portrait");
+    const now = new Date();
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - this.dashboardPeriod);
+
+    const baseItems =
+      this.dashboardCategory === "Todas"
+        ? FirestoreService.items
+        : FirestoreService.items.filter(
+            (i) => i.categoria === this.dashboardCategory,
+          );
+    const itemCatMap = {};
+    FirestoreService.items.forEach((i) => (itemCatMap[i.id] = i.categoria));
+    const baseMovements = (FirestoreService.movements || []).filter((m) =>
+      this.dashboardCategory === "Todas"
+        ? true
+        : itemCatMap[m.itemId] === this.dashboardCategory,
+    );
+
+    let totalEntradas = 0,
+      totalSaidas = 0,
+      totalEstoque = 0;
+    baseItems.forEach((i) => {
+      totalEstoque += Number(i.estoque) || 0;
+    });
+    baseMovements.forEach((m) => {
+      if (m.date && m.date.toDate) {
+        const d = m.date.toDate();
+        if (d >= targetDate) {
+          if (m.type === "entrada") totalEntradas += Number(m.qty) || 0;
+          if (m.type === "saida") totalSaidas += Number(m.qty) || 0;
+        }
+      }
+    });
+    const lowStockCount = baseItems.filter((i) => {
+      const est = Number(i.estoque) || 0;
+      const min = Number(i.estoqueMinimo) || 0;
+      return est > 0 && est <= min;
+    }).length;
+    const outOfStockCount = baseItems.filter(
+      (i) => (Number(i.estoque) || 0) <= 0,
+    ).length;
+
+    doc.setFontSize(16);
+    doc.text("Relatório do Painel Executivo - SEROB", 14, 20);
+    doc.setFontSize(10);
+    doc.text(
+      `Período analisado: Últimos ${this.dashboardPeriod} dias | Categoria: ${this.dashboardCategory}`,
+      14,
+      28,
+    );
+    doc.text(`Emitido em: ${now.toLocaleString("pt-BR")}`, 14, 34);
+
+    doc.autoTable({
+      startY: 40,
+      head: [["Métrica de KPI", "Valor"]],
+      body: [
+        ["Total de Cadastros", baseItems.length.toString()],
+        ["Itens em Estoque", App.formatNumber(totalEstoque, 0)],
+        ["Entradas (Unidades)", App.formatNumber(totalEntradas, 0)],
+        ["Saídas (Unidades)", App.formatNumber(totalSaidas, 0)],
+        ["Itens Críticos", lowStockCount.toString()],
+        ["Itens Esgotados", outOfStockCount.toString()],
+      ],
+      theme: "grid",
+      headStyles: { fillColor: [37, 99, 235] },
+      margin: { left: 14, right: 14 },
+    });
+
+    const criticalItems = baseItems.filter(
+      (i) => (Number(i.estoque) || 0) <= (Number(i.estoqueMinimo) || 0) * 1.4,
+    );
+    if (criticalItems.length > 0) {
+      doc.text(
+        "Itens em Nível Crítico ou Alerta:",
+        14,
+        doc.lastAutoTable.finalY + 12,
+      );
+      const critData = criticalItems
+        .slice(0, 30)
+        .map((i) => [
+          i.codigo || "-",
+          i.descricao || "-",
+          i.estoque || 0,
+          i.estoqueMinimo || 0,
+        ]);
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 16,
+        head: [["Código", "Descrição", "Saldo Atual", "Mínimo"]],
+        body: critData,
+        theme: "striped",
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [225, 29, 72] }, // bg-rose-600
+      });
+    }
+
+    const pageCount = doc.internal.getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        doc.internal.pageSize.width - 14,
+        doc.internal.pageSize.height - 10,
+        { align: "right" },
+      );
+    }
+
+    doc.save(`dashboard_resumo_${now.getTime()}.pdf`);
+    ToastManager.show("Relatório do Dashboard gerado com sucesso!", "success");
   },
   formatNumber(value, maxFractionDigits = 2) {
     const n = Number(value);
@@ -1579,21 +2294,25 @@ const App = {
       }
     }
 
-    if (filterSel) {
+    const filterSels = document.querySelectorAll("#filter-categoria");
+    if (filterSels.length > 0) {
       const currentFilter = InventoryController.state.categoryFilter || "Todas";
-      const has = Array.from(filterSel.options).some(
-        (o) => o.value === currentFilter,
-      );
-      if (has) {
-        filterSel.value = currentFilter;
-      } else {
-        filterSel.value = "Todas";
-        InventoryController.state.categoryFilter = "Todas";
-      }
+      filterSels.forEach((fSel) => {
+        const has = Array.from(fSel.options).some(
+          (o) => o.value === currentFilter,
+        );
+        if (has) {
+          fSel.value = currentFilter;
+        } else {
+          fSel.value = "Todas";
+          InventoryController.state.categoryFilter = "Todas";
+        }
+      });
     }
   },
   async init() {
     AuthService.restoreSession();
+    this.applyDarkMode();
     await FirestoreService.init();
     document.getElementById("loading-screen").classList.add("hidden");
     const loginForm = document.getElementById("login-form");
@@ -1613,6 +2332,7 @@ const App = {
       this.renderDashboard();
     } else if (
       this.currentTab === "stock-search" ||
+      this.currentTab === "stock-favorites" ||
       this.currentTab === "stock-move"
     ) {
       this.renderTableRows();
@@ -1633,8 +2353,140 @@ const App = {
       FirestoreService.resetData();
     }
   },
+  exportDatabaseJSON() {
+    if (!AuthService.isAdmin()) {
+      return ToastManager.show("Sem permissão para exportar backup.", "error");
+    }
+
+    const data = {
+      timestamp: new Date().toISOString(),
+      tenant: FirestoreService.profile?.tenantName || "Unknown",
+      items: FirestoreService.items || [],
+      movements: FirestoreService.movements || [],
+      deposits: FirestoreService.deposits || [],
+    };
+
+    const dataStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_serob_${new Date().getTime()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    ToastManager.show("Backup exportado com sucesso!", "success");
+  },
+  restoreDatabaseJSON(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!AuthService.isAdmin()) {
+      ToastManager.show("Sem permissão para restaurar backup.", "error");
+      event.target.value = "";
+      return;
+    }
+
+    if (
+      !confirm(
+        "ATENÇÃO: Restaurar um backup irá sobrescrever/mesclar os dados atuais do banco com os do arquivo. Recomenda-se exportar um backup antes. Deseja continuar?",
+      )
+    ) {
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.items) {
+          throw new Error("Arquivo JSON inválido ou formato incompatível.");
+        }
+
+        ToastManager.show("Restaurando backup... Aguarde.", "warning");
+
+        const writeInBatches = async (collectionName, itemsArray) => {
+          if (!itemsArray || itemsArray.length === 0) return;
+          for (let i = 0; i < itemsArray.length; i += 500) {
+            const chunk = itemsArray.slice(i, i + 500);
+            const batch = writeBatch(db);
+            chunk.forEach((item) => {
+              const docId = item.id
+                ? String(item.id)
+                : doc(collection(db, collectionName)).id;
+              const docRef = doc(db, collectionName, docId);
+              batch.set(docRef, item);
+            });
+            await batch.commit();
+          }
+        };
+
+        await writeInBatches("items", data.items);
+        if (data.movements) await writeInBatches("movements", data.movements);
+        if (data.deposits) await writeInBatches("deposits", data.deposits);
+
+        ToastManager.show(
+          "Backup restaurado com sucesso! Recarregando...",
+          "success",
+        );
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        console.error("Erro ao restaurar JSON:", err);
+        ToastManager.show(
+          err.message || "Erro ao ler o arquivo de backup.",
+          "error",
+        );
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  },
   initLayout() {
+    // --- Verificação de Expiração do Plano Starter (Teste de 24h) ---
+    const profile = FirestoreService.profile;
+    if (profile) {
+      const plan = profile.plan || "starter";
+      if (plan === "starter" && profile.createdAt) {
+        let createdDate = new Date();
+        if (typeof profile.createdAt.toDate === "function") {
+          createdDate = profile.createdAt.toDate();
+        } else if (profile.createdAt.seconds) {
+          createdDate = new Date(profile.createdAt.seconds * 1000);
+        }
+        const hoursElapsed = (new Date() - createdDate) / (1000 * 60 * 60);
+        if (hoursElapsed > 24) {
+          alert(
+            "Seu período de teste grátis de 24h expirou!\n\nEntre em contato com um consultor para assinar um de nossos planos e continuar usando o sistema.",
+          );
+          window.open(
+            "https://wa.me/5511999999999?text=Ol%C3%A1%2C%20meu%20teste%20expirou%20e%20gostaria%20de%20assinar%20o%20sistema.",
+            "_blank",
+          );
+          this.logout();
+          return;
+        } else {
+          // Derruba a sessão automaticamente se as 24h vencerem enquanto ele usa o app
+          const msLeft = 24 * 60 * 60 * 1000 - (new Date() - createdDate);
+          if (msLeft > 0) {
+            setTimeout(() => {
+              alert(
+                "Seu período de teste grátis de 24h expirou!\n\nSua sessão será encerrada para proteção.",
+              );
+              this.logout();
+            }, msLeft);
+          }
+        }
+      }
+    }
+
     document.getElementById("login-layout").classList.add("hidden");
+    const regLayout = document.getElementById("register-layout");
+    if (regLayout) {
+      regLayout.classList.add("hidden");
+      regLayout.classList.remove("flex");
+    }
     document.getElementById("landing-layout").classList.add("hidden");
     const appLayout = document.getElementById("app-layout");
     appLayout.classList.remove("hidden");
@@ -1647,6 +2499,13 @@ const App = {
     } catch {}
 
     const contentArea = document.getElementById("content-area");
+
+    // Correção: Garante que a área principal tenha scroll para suportar a Dashboard
+    if (contentArea) {
+      contentArea.classList.add("overflow-y-auto", "overflow-x-hidden");
+      contentArea.classList.remove("overflow-hidden");
+    }
+
     const backToTopBtn = document.getElementById("back-to-top");
     if (contentArea && backToTopBtn) {
       contentArea.addEventListener("scroll", () => {
@@ -1702,7 +2561,10 @@ const App = {
     const tNameEl = document.getElementById("tenant-name");
     if (tNameEl) tNameEl.innerText = user.tenantName || "Sua Empresa";
 
-    const iconHtml = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-full h-full p-1.5 fill-current"><path d="M15.71,12.71a6,6,0,1,0-7.42,0,10,10,0,0,0-6.22,8.18,1,1,0,0,0,2,.22,8,8,0,0,1,15.9,0,1,1,0,0,0,1,.89h.11a1,1,0,0,0,.88-1.1A10,10,0,0,0,15.71,12.71ZM12,12a4,4,0,1,1,4-4A4,4,0,0,1,12,12Z"/></svg>`;
+    let iconHtml = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-full h-full p-1.5 fill-current"><path d="M15.71,12.71a6,6,0,1,0-7.42,0,10,10,0,0,0-6.22,8.18,1,1,0,0,0,2,.22,8,8,0,0,1,15.9,0,1,1,0,0,0,1,.89h.11a1,1,0,0,0,.88-1.1A10,10,0,0,0,15.71,12.71ZM12,12a4,4,0,1,1,4-4A4,4,0,0,1,12,12Z"/></svg>`;
+    if (user.avatarUrl) {
+      iconHtml = `<img src="${Utils.escapeHTML(user.avatarUrl)}" alt="Avatar" class="w-full h-full object-cover rounded-full bg-white" />`;
+    }
     document.getElementById("user-avatar").innerHTML = iconHtml;
     const adminTools = document.getElementById("admin-tools");
     const navMatReg = document.getElementById("nav-mat-register");
@@ -1717,6 +2579,49 @@ const App = {
       if (navMatReg) navMatReg.classList.add("hidden");
       if (navSaas) navSaas.classList.add("hidden");
     }
+
+    // Validação do Modo de Demonstração
+    const demoBadge = document.getElementById("demo-warning-badge");
+    if (demoBadge) {
+      if (user.email === "demo@serob.com") {
+        demoBadge.classList.remove("hidden");
+        demoBadge.classList.add("flex");
+      } else {
+        demoBadge.classList.add("hidden");
+        demoBadge.classList.remove("flex");
+      }
+    }
+    this.updateLandingUI();
+  },
+  updateLandingUI() {
+    const user = AuthService.getCurrentUser();
+    const desktopAuth = document.getElementById("desktop-landing-auth");
+    const mobileAuth = document.getElementById("mobile-landing-auth");
+    const heroAuth = document.getElementById("hero-auth-buttons");
+
+    if (user) {
+      const firstName = (user.name || "Usuário").split(" ")[0];
+      if (desktopAuth) {
+        desktopAuth.innerHTML = `<button onclick="window.showApp()" class="flex items-center gap-2 px-4 py-2 bg-brand-50 text-brand-600 font-bold rounded-xl hover:bg-brand-100 transition-colors shadow-sm"><div class="w-6 h-6 rounded-full bg-brand-200 flex items-center justify-center text-brand-700 text-xs"><i data-lucide="user" class="w-3 h-3"></i></div> Olá, ${Utils.escapeHTML(firstName)}</button>`;
+      }
+      if (mobileAuth) {
+        mobileAuth.innerHTML = `<button onclick="document.getElementById('mobile-menu').classList.add('hidden'); window.showApp();" class="text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl shadow-lg shadow-brand-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Acessar Painel</button>`;
+      }
+      if (heroAuth) {
+        heroAuth.innerHTML = `<button onclick="window.showApp()" class="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl shadow-xl shadow-brand-600/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">Ir para o Painel <i data-lucide="arrow-right" class="w-5 h-5"></i></button>`;
+      }
+    } else {
+      if (desktopAuth) {
+        desktopAuth.innerHTML = `<button onclick="window.showLogin()" class="text-brand-600 hover:text-brand-700 font-bold">Fazer Login</button>`;
+      }
+      if (mobileAuth) {
+        mobileAuth.innerHTML = `<button onclick="document.getElementById('mobile-menu').classList.add('hidden'); window.showLogin();" class="text-white bg-brand-600 hover:bg-brand-700 py-3 rounded-xl shadow-lg shadow-brand-600/20 transition-all active:scale-95">Fazer Login</button>`;
+      }
+      if (heroAuth) {
+        heroAuth.innerHTML = `<button onclick="window.showRegister()" class="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl shadow-xl shadow-brand-600/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">Testar Gratuitamente <i data-lucide="arrow-right" class="w-5 h-5"></i></button><button onclick="AuthController.handleDemoLogin(this)" class="px-8 py-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 transition-all flex items-center justify-center gap-2"><i data-lucide="play-circle" class="w-5 h-5 text-slate-400"></i> Ver Demonstração</button>`;
+      }
+    }
+    lucide.createIcons();
   },
   toggleSubmenu(id, bypassExpand = false) {
     if (this.isDesktopCollapsed && !bypassExpand) {
@@ -1733,11 +2638,13 @@ const App = {
     }
   },
   navigate(tab) {
+    const prevTab = this.currentTab;
     this.currentTab = tab;
 
     const pageTitles = {
       dashboard: "Visão Geral",
       "stock-search": "Pesquisa de Estoque",
+      "stock-favorites": "Itens Favoritos",
       "stock-move": "Movimentações",
       "movement-search": "Histórico do Sistema",
       "material-register": "Cadastro de Material",
@@ -1778,6 +2685,7 @@ const App = {
         "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-800 text-white transition-all";
       const tabIdMap = {
         "stock-search": "nav-stock-search",
+        "stock-favorites": "nav-stock-favorites",
         "stock-move": "nav-stock-move",
         "movement-search": "nav-mov-search",
         "material-register": "nav-mat-register",
@@ -1793,7 +2701,8 @@ const App = {
         return this.navigate("dashboard");
       }
 
-      if (tab === "stock-search") this.renderStockSearch();
+      if (tab === "stock-search" || tab === "stock-favorites")
+        this.renderStockSearch();
       else if (tab === "stock-move")
         this.renderMovementsLayout("Movimentação de Estoque");
       else if (tab === "movement-search") this.renderHistoryLayout();
@@ -1816,6 +2725,15 @@ const App = {
     sidebar.classList.toggle("-translate-x-full");
     overlay.classList.toggle("hidden");
     overlay.classList.toggle("opacity-0");
+    if (sidebar.classList.contains("-translate-x-full")) {
+      overlay.classList.add("opacity-0");
+      // Aguarda a animação terminar antes de ocultar do layout
+      setTimeout(() => overlay.classList.add("hidden"), 300);
+    } else {
+      overlay.classList.remove("hidden");
+      // Força o navegador a desenhar o elemento antes de iniciar a transição
+      requestAnimationFrame(() => overlay.classList.remove("opacity-0"));
+    }
   },
   scrollToTop() {
     const contentArea = document.getElementById("content-area");
@@ -1835,17 +2753,70 @@ const App = {
     document.getElementById("pwd-confirm").value = "";
     ModalManager.open("modal-password");
   },
+  openProfileModal() {
+    const u = AuthService.getCurrentUser();
+    if (!u) return;
+    document.getElementById("profile-name").value = u.name || "";
+    document.getElementById("profile-avatar").value = u.avatarUrl || "";
+    ModalManager.open("modal-profile");
+  },
+  async saveProfile(e) {
+    e.preventDefault();
+    const u = auth.currentUser;
+    if (!u) return;
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Salvando...`;
+    btn.disabled = true;
+    lucide.createIcons();
+
+    const newName = document.getElementById("profile-name").value.trim();
+    const newAvatar = document.getElementById("profile-avatar").value.trim();
+
+    try {
+      await setDoc(
+        doc(db, "users", u.uid),
+        {
+          name: newName,
+          avatarUrl: newAvatar,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      if (FirestoreService.profile) {
+        FirestoreService.profile.name = newName;
+        FirestoreService.profile.avatarUrl = newAvatar;
+      }
+      this.updateUserProfile();
+      ToastManager.show("Perfil atualizado com sucesso!", "success");
+      ModalManager.close("modal-profile");
+    } catch (err) {
+      console.error(err);
+      ToastManager.show("Erro ao atualizar o perfil.", "error");
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      lucide.createIcons();
+    }
+  },
   renderStockSearch() {
-    const container = document.getElementById("content-area");
     if (!AuthService.getCurrentUser()) return;
-    container.innerHTML = `
-      <div class="space-y-4 h-full flex flex-col animate-fade-in max-w-7xl mx-auto">
+    // Usa a mesma view base para evitar duplicação de IDs HTML (inventory-body) no DOM
+    const view = this.getOrCreateView("stock-search");
+    const vid = "stock-search";
+
+    // Se a view for nova, injeta o layout estrutural. Caso contrário, ele já está na memória!
+    if (view.innerHTML === "") {
+      view.innerHTML = `
+      <div class="space-y-4 h-full flex flex-col min-h-0 animate-fade-in max-w-7xl mx-auto">
         <div class="bg-white p-6 rounded-3xl border border-slate-200/60 shadow-sm relative overflow-hidden">
           <div class="absolute top-0 left-0 w-1 h-full bg-brand-500"></div>
           <p class="text-xs font-bold text-brand-600 uppercase tracking-wider mb-4 flex items-center gap-2"><i data-lucide="filter" class="w-4 h-4"></i> Filtros de Busca</p>
           <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div class="md:col-span-3"><label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Nome / Descrição</label><input type="text" id="search-name" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white shadow-sm transition-all text-sm" placeholder="Digite o nome..." onkeyup="InventoryController.handleAdvancedSearch()"></div>
-            <div class="md:col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Código</label><input type="text" id="search-code" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white shadow-sm transition-all text-sm" placeholder="Ex: 12345" onkeyup="InventoryController.handleAdvancedSearch()"></div>
+            <div class="md:col-span-3"><label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Nome / Descrição</label><input type="text" id="search-name" autocomplete="off" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white shadow-sm transition-all text-sm" placeholder="Digite o nome..." onkeyup="InventoryController.handleAdvancedSearch()"></div>
+            <div class="md:col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Código</label><input type="text" id="search-code" autocomplete="off" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white shadow-sm transition-all text-sm" placeholder="Ex: 12345" onkeyup="InventoryController.handleAdvancedSearch()"></div>
             <div class="md:col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Status</label><select id="search-status" onchange="InventoryController.handleAdvancedSearch()" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50 focus:bg-white shadow-sm transition-all text-sm cursor-pointer appearance-none"><option value="Todos">Todos</option><option value="Normal">Normal</option><option value="Alerta">Alerta</option><option value="Critico">Crítico</option><option value="Esgotado">Esgotado</option></select></div>
             <div class="md:col-span-2"><button onclick="InventoryController.handleAdvancedSearch()" class="w-full px-4 py-3 bg-brand-600 text-white text-sm font-bold rounded-2xl shadow-lg hover:bg-brand-700 transition-all flex items-center justify-center gap-2 active:scale-95"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Atualizar</button></div>
             <div class="md:col-span-3 flex gap-2">
@@ -1854,11 +2825,11 @@ const App = {
             </div>
           </div>
         </div>
-        <div class="bg-transparent md:bg-white rounded-3xl border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col shadow-none md:shadow-sm">
+        <div class="bg-transparent md:bg-white rounded-3xl border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col shadow-none md:shadow-sm min-h-0">
           <div class="overflow-auto flex-1 custom-scrollbar">
             <table class="block md:table w-full text-sm text-left relative">
               <thead class="hidden md:table-header-group bg-slate-50/80 backdrop-blur-md text-slate-500 font-bold uppercase text-[10px] tracking-widest sticky top-0 z-20 border-b border-slate-200/80">
-                <tr><th class="px-4 py-3 w-28">Código</th><th class="px-4 py-3 w-24">Cód. Int.</th><th class="px-4 py-3 min-w-[200px]">Descrição</th><th class="px-4 py-3 text-center w-20">Unid.</th><th class="px-4 py-3 text-center w-24">Saldo</th><th class="px-4 py-3 text-center w-20">Mín.</th><th class="px-4 py-3 text-center w-20">Ressup.</th><th class="px-4 py-3 text-center w-24">Status</th><th class="px-4 py-3 text-right w-16"></th></tr>
+                <tr><th class="px-4 py-3 w-28 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('codigo')">Código <span id="sort-icon-${vid}-codigo"></span></th><th class="px-4 py-3 w-24 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('codigoInterno')">Cód. Int. <span id="sort-icon-${vid}-codigoInterno"></span></th><th class="px-4 py-3 min-w-[200px] cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('descricao')">Descrição <span id="sort-icon-${vid}-descricao"></span></th><th class="px-4 py-3 text-center w-20 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('unidade')">Unid. <span id="sort-icon-${vid}-unidade"></span></th><th class="px-4 py-3 text-center w-24 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('estoque')">Saldo <span id="sort-icon-${vid}-estoque"></span></th><th class="px-4 py-3 text-center w-20 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('estoqueMinimo')">Mín. <span id="sort-icon-${vid}-estoqueMinimo"></span></th><th class="px-4 py-3 text-center w-20 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="InventoryController.sortItems('qtdRessuprimento')">Ressup. <span id="sort-icon-${vid}-qtdRessuprimento"></span></th><th class="px-4 py-3 text-center w-24">Status</th><th class="px-4 py-3 text-right w-16"></th></tr>
               </thead>
               <tbody id="inventory-body" class="block md:table-row-group divide-y-0 md:divide-y divide-slate-100 bg-transparent md:bg-white space-y-4 md:space-y-0"></tbody>
             </table>
@@ -1874,13 +2845,29 @@ const App = {
           </div>
         </div>
       </div>`;
-    lucide.createIcons();
+      lucide.createIcons();
+    } else {
+      // Se a interface já existia, sincroniza os inputs visuais com o reset de filtros
+      const elGlobal = view.querySelector(
+        'input[placeholder*="Buscar código"]',
+      );
+      if (elGlobal) elGlobal.value = InventoryController.state.searchTerm;
+      const elName = document.getElementById("search-name");
+      if (elName) elName.value = InventoryController.state.searchName;
+      const elCode = document.getElementById("search-code");
+      if (elCode) elCode.value = InventoryController.state.searchCode;
+      const elCat = document.getElementById("filter-categoria");
+      if (elCat) elCat.value = InventoryController.state.categoryFilter;
+      const elStatus = document.getElementById("search-status");
+      if (elStatus) elStatus.value = InventoryController.state.statusFilter;
+    }
+    // Independente se recriou a view ou não, sempre atualizamos os dados da tabela
     this.renderTableRows();
   },
   renderDashboard() {
-    const container = document.getElementById("content-area");
     const user = AuthService.getCurrentUser();
     if (!user) return;
+    const view = this.getOrCreateView("dashboard");
 
     const now = new Date();
     const targetDate = new Date();
@@ -1975,7 +2962,9 @@ const App = {
 
     const goal = Math.round((2000 / 30) * this.dashboardPeriod);
 
-    container.innerHTML = `
+    // No Dashboard optamos por recarregar tudo devido aos gráficos e KPIs fortemente dinâmicos
+    // Para uma performance total no futuro, eles também poderiam ser atualizados granularmente
+    view.innerHTML = `
       <div class="space-y-5 animate-fade-in pb-10 max-w-[1600px] mx-auto pt-2">
         
         <!-- FILTROS BI (SLICERS) -->
@@ -1989,22 +2978,23 @@ const App = {
           </div>
           <div class="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
              <div class="relative min-w-[220px]">
-                <select onchange="App.changeDashboardCategory(this.value)" class="appearance-none w-full bg-slate-50 border border-slate-200 text-slate-700 py-2.5 pl-4 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm font-semibold cursor-pointer shadow-inner">
+                <select onchange="App.changeDashboardCategory(this.value)" class="appearance-none w-full bg-slate-50 border-0 ring-1 ring-slate-200 focus:bg-white text-slate-700 py-2.5 pl-4 pr-10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm font-semibold cursor-pointer shadow-sm transition-all">
                   ${categoriesList.map((c) => `<option value="${c}" ${this.dashboardCategory === c ? "selected" : ""}>${c}</option>`).join("")}
                 </select>
-                <i data-lucide="filter" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-500 pointer-events-none"></i>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="m6 9 6 6 6-6"></path></svg></div>
              </div>
-             <div class="flex gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
-               <button onclick="App.changeDashboardPeriod(7)" class="${this.dashboardPeriod === 7 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:bg-slate-200/50"} flex-1 px-4 py-2 rounded-lg text-xs transition-all duration-200">7 Dias</button>
-               <button onclick="App.changeDashboardPeriod(30)" class="${this.dashboardPeriod === 30 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:bg-slate-200/50"} flex-1 px-4 py-2 rounded-lg text-xs transition-all duration-200">30 Dias</button>
-               <button onclick="App.changeDashboardPeriod(90)" class="${this.dashboardPeriod === 90 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:bg-slate-200/50"} flex-1 px-4 py-2 rounded-lg text-xs transition-all duration-200">90 Dias</button>
+             <div class="flex gap-1 bg-slate-50 p-1 rounded-2xl ring-1 ring-slate-200 shadow-sm">
+               <button onclick="App.changeDashboardPeriod(7)" class="${this.dashboardPeriod === 7 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 font-semibold"} flex-1 px-4 py-1.5 rounded-xl text-sm transition-all duration-200">7 Dias</button>
+               <button onclick="App.changeDashboardPeriod(30)" class="${this.dashboardPeriod === 30 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 font-semibold"} flex-1 px-4 py-1.5 rounded-xl text-sm transition-all duration-200">30 Dias</button>
+               <button onclick="App.changeDashboardPeriod(90)" class="${this.dashboardPeriod === 90 ? "bg-white shadow text-brand-600 font-bold" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 font-semibold"} flex-1 px-4 py-1.5 rounded-xl text-sm transition-all duration-200">90 Dias</button>
              </div>
+             <button onclick="App.exportDashboardToPDF()" class="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-2xl shadow-sm hover:bg-red-700 transition-all active:scale-95" title="Exportar Resumo em PDF"><i data-lucide="file-text" class="w-4 h-4"></i> PDF</button>
           </div>
         </div>
 
         <!-- 5 KPIs -->
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          ${this._createCard("Capital Alocado", Utils.formatCurrency(valorAlocado), "dollar-sign", "purple")}
+          ${this._createCard("Total de Cadastros", stats.totalItems, "database", "purple")}
           ${this._createCard("Itens em Estoque", App.formatNumber(totalEstoque, 0), "package", "blue")}
           ${this._createCard("Entradas (Un)", App.formatNumber(totalEntradas, 0), "arrow-down-to-line", "green")}
           ${this._createCard("Saídas (Un)", App.formatNumber(totalSaidas, 0), "arrow-up-from-line", "amber")}
@@ -2017,11 +3007,12 @@ const App = {
             <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-md sticky top-0 z-10">
                <h3 class="font-bold text-slate-900 flex items-center gap-2"><i data-lucide="brain-circuit" class="w-5 h-5 text-indigo-500"></i> Previsão & Alertas IA</h3>
                <div class="flex gap-2 w-full sm:w-auto">
+                 <button onclick="App.downloadPurchasePDF()" class="flex-1 sm:flex-none text-[11px] flex justify-center items-center gap-1.5 font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-xl hover:bg-rose-100 transition-colors shadow-sm active:scale-95" title="Baixar Lista em PDF"><i data-lucide="file-down" class="w-3.5 h-3.5"></i> Baixar PDF</button>
                  <button id="btn-avisar-compras" onclick="App.sendPurchaseAlert()" class="flex-1 sm:flex-none text-[11px] flex justify-center items-center gap-1.5 font-bold text-white bg-indigo-600 px-3 py-2.5 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm active:scale-95"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Automação Email</button>
                  <button onclick="App.navigate('stock-search')" class="flex-1 sm:flex-none text-[11px] flex justify-center items-center font-bold text-brand-600 bg-brand-50 px-3 py-2.5 rounded-xl hover:bg-brand-100 transition-colors active:scale-95">Ver Estoque</button>
                </div>
             </div>
-            <div class="overflow-x-auto p-2 md:p-0 custom-scrollbar max-h-96"><table class="block md:table w-full text-sm text-left"><thead class="hidden md:table-header-group bg-slate-50 text-slate-500 font-semibold uppercase text-[10px] tracking-wider sticky top-0 z-20"><tr><th class="px-5 py-3">Material / Tendência</th><th class="px-5 py-3 text-right">Saldo</th><th class="px-5 py-3 text-center">Esgota Em ✨</th><th class="px-5 py-3 text-center">Status</th></tr></thead><tbody class="block md:table-row-group divide-y-0 md:divide-y divide-slate-100 space-y-3 md:space-y-0">${
+            <div class="overflow-auto p-2 md:p-0 custom-scrollbar max-h-96"><table class="block md:table w-full text-sm text-left"><thead class="hidden md:table-header-group bg-slate-50 text-slate-500 font-semibold uppercase text-[10px] tracking-wider sticky top-0 z-20"><tr><th class="px-5 py-3">Material / Tendência</th><th class="px-5 py-3 text-right">Saldo / Setup</th><th class="px-5 py-3 text-center">Esgota Em ✨</th><th class="px-5 py-3 text-center">Sugestão IA</th></tr></thead><tbody class="block md:table-row-group divide-y-0 md:divide-y divide-slate-100 space-y-3 md:space-y-0">${
               alertItems
                 .slice(0, 7)
                 .map((item, index) => {
@@ -2036,7 +3027,8 @@ const App = {
                     ? "text-red-600 animate-pulse"
                     : "text-amber-600";
 
-                  const { m, projectedRate, suggQty } = predictor(item);
+                  const { m, projectedRate, suggQty, confidence, safetyStock } =
+                    predictor(item);
 
                   let trendHtml = "";
                   if (m > 0.05)
@@ -2066,15 +3058,29 @@ const App = {
                     prevText = `<div class="font-bold ${colorDate} text-sm">${dateStr}</div><div class="text-slate-400 font-normal text-[10px]">Restam ~${daysLeft} dias</div>`;
                   }
 
+                  // Colorir a barra de confiança da IA
+                  let confColor =
+                    confidence > 70
+                      ? "bg-emerald-500"
+                      : confidence > 40
+                        ? "bg-amber-500"
+                        : "bg-red-500";
+                  let confText =
+                    confidence > 70
+                      ? "Alta"
+                      : confidence > 40
+                        ? "Média"
+                        : "Baixa";
+
                   const suggHtml = isCritical
                     ? `<div class="text-indigo-600 font-bold mt-2 text-[10px] bg-indigo-50 px-2.5 py-1 rounded border border-indigo-100 w-max md:mx-auto" title="IA Sugere reposição baseada na curva de regressão">Sugerido: Compra de ${suggQty}</div>`
-                    : "";
+                    : `<div class="text-slate-500 font-bold mt-2 text-[10px] bg-slate-50 px-2.5 py-1 rounded border border-slate-200 w-max md:mx-auto">Comprar: ${suggQty} un</div>`;
 
                   return `<tr class="hover:bg-slate-50/80 transition-all duration-300 group animate-fade-in opacity-0 block md:table-row bg-white md:bg-transparent border border-slate-200 md:border-none rounded-2xl md:rounded-none p-4 md:p-0" style="animation-delay: ${index * 50}ms;">
-                    <td class="block md:table-cell px-0 md:px-5 py-2 md:py-3 border-b border-slate-100 md:border-none"><div class="font-medium text-slate-900 truncate max-w-xs" title="${Utils.escapeHTML(item.descricao)}">${Utils.escapeHTML(item.descricao)}</div>${trendHtml}</td>
-                    <td class="flex justify-between items-center md:table-cell px-0 md:px-5 py-2 md:py-3 text-left md:text-right font-mono font-bold ${stockClass} border-b border-slate-100 md:border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase">Saldo</span><div class="flex flex-col items-end"><span>${Number(item.estoque) || 0}</span><span class="text-[9px] text-slate-400 font-normal">Mín: ${Number(item.estoqueMinimo) || 0}</span></div></td>
+                    <td class="block md:table-cell px-0 md:px-5 py-2 md:py-3 border-b border-slate-100 md:border-none"><div class="font-medium text-slate-900 truncate max-w-xs" title="${Utils.escapeHTML(item.descricao)}">${Utils.escapeHTML(item.descricao)}</div><div class="flex items-center gap-2 mt-1">${trendHtml}<span class="text-[9px] text-slate-400 flex items-center gap-1 border-l border-slate-300 pl-2" title="Confiança da IA na precisão: ${confidence}%"><div class="w-1.5 h-1.5 rounded-full ${confColor}"></div>Confiança ${confText}</span></div></td>
+                    <td class="flex justify-between items-center md:table-cell px-0 md:px-5 py-2 md:py-3 text-left md:text-right font-mono font-bold ${stockClass} border-b border-slate-100 md:border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase">Saldo</span><div class="flex flex-col items-end"><span>${Number(item.estoque) || 0} un</span><span class="text-[9px] text-slate-400 font-normal" title="Estoque de Segurança Sugerido pela IA">Buffer IA: ${safetyStock} un</span></div></td>
                     <td class="flex flex-col justify-center items-end md:items-center md:table-cell px-0 md:px-5 py-3 md:py-3 text-right md:text-center border-b border-slate-100 md:border-none"><div class="md:hidden font-bold text-[10px] text-slate-400 uppercase mb-1">Esgota Em</div>${prevText}</td>
-                    <td class="flex flex-col items-end md:items-center justify-center md:table-cell px-0 md:px-5 py-3 md:py-3 border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase mb-1">Status</span><span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${statusClass}">${statusText}</span>${suggHtml}</td>
+                    <td class="flex flex-col items-end md:items-center justify-center md:table-cell px-0 md:px-5 py-3 md:py-3 border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase mb-1">Ação Sugerida</span><span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${statusClass}">${statusText}</span>${suggHtml}</td>
                   </tr>`;
                 })
                 .join("") ||
@@ -2084,7 +3090,7 @@ const App = {
           <div class="flex flex-col gap-6">
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col h-full relative">
               <h3 class="font-bold text-slate-900 mb-2 flex items-center gap-2"><i data-lucide="activity" class="w-5 h-5 text-blue-500"></i> Saúde do Estoque</h3>
-              <div class="relative w-full h-48 mt-2 flex-1"><canvas id="statusChart"></canvas></div>
+              <div class="relative w-full h-64 md:h-48 mt-2 flex-1"><canvas id="statusChart"></canvas></div>
             </div>
             <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/60">
                <div class="flex justify-between items-end mb-2">
@@ -2103,13 +3109,13 @@ const App = {
         
         <!-- BOTTOM GRAPHS -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-          <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col">
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col overflow-hidden w-full">
             <h3 class="font-bold text-slate-900 mb-4 flex items-center gap-2"><i data-lucide="bar-chart" class="w-5 h-5 text-brand-500"></i> ${this.dashboardCategory === "Todas" ? "Volume por Categoria" : "Top 10 Itens (Volume)"}</h3>
-            <div class="relative w-full h-64"><canvas id="depositsChart"></canvas></div>
+            <div class="relative w-full flex-1 overflow-x-auto custom-scrollbar pb-2"><div class="relative h-64 min-w-[400px] lg:min-w-0 lg:w-full"><canvas id="depositsChart"></canvas></div></div>
           </div>
-          <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col">
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col overflow-hidden w-full">
             <h3 class="font-bold text-slate-900 mb-4 flex items-center gap-2"><i data-lucide="line-chart" class="w-5 h-5 text-purple-500"></i> Projeção e Consumo</h3>
-            <div class="relative w-full h-64"><canvas id="monthlyChart"></canvas></div>
+            <div class="relative w-full flex-1 overflow-x-auto custom-scrollbar pb-2"><div class="relative h-64 min-w-[400px] lg:min-w-0 lg:w-full"><canvas id="monthlyChart"></canvas></div></div>
           </div>
           <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 p-5 flex flex-col"><h3 class="font-bold text-slate-900 mb-6 flex items-center gap-2"><i data-lucide="users" class="w-5 h-5 text-amber-500"></i> Top Usuários (${this.dashboardPeriod}d)</h3><div class="space-y-5 overflow-y-auto custom-scrollbar flex-1 pr-2">
           ${
@@ -2151,7 +3157,7 @@ const App = {
         </div>
         <div class="relative z-10">
           <div class="flex items-center gap-3 mb-4 opacity-90"><div class="p-2 bg-white/20 rounded-xl backdrop-blur-sm"><i data-lucide="${icon}" class="w-5 h-5 text-white"></i></div><p class="text-xs font-bold uppercase tracking-wider">${title}</p></div>
-          <h3 ${valueId} class="text-4xl font-extrabold tracking-tight">${displayValue}</h3>
+          <h3 ${valueId} class="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight truncate" title="${displayValue}">${displayValue}</h3>
         </div>
       </div>`;
   },
@@ -2170,6 +3176,10 @@ const App = {
     const ctxMo = document.getElementById("monthlyChart");
     const ctxStatus = document.getElementById("statusChart");
     if (!ctx) return;
+
+    const textColor = this.isDarkMode ? "#94a3b8" : "#64748b";
+    const gridColor = this.isDarkMode ? "#334155" : "#f1f5f9";
+    const tooltipBg = this.isDarkMode ? "#0f172a" : "#1e293b";
 
     const baseItems =
       this.dashboardCategory === "Todas"
@@ -2211,11 +3221,12 @@ const App = {
           cutout: "75%",
           plugins: {
             legend: {
-              position: "right",
+              position: window.innerWidth < 768 ? "bottom" : "right",
               labels: {
                 usePointStyle: true,
                 boxWidth: 8,
                 font: { family: "Inter", size: 10 },
+                color: textColor,
               },
             },
           },
@@ -2287,7 +3298,7 @@ const App = {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: "#1e293b",
+            backgroundColor: tooltipBg,
             padding: 14,
             titleFont: { size: 13, family: "Inter" },
             bodyFont: { size: 14, family: "Inter", weight: "bold" },
@@ -2306,16 +3317,16 @@ const App = {
         scales: {
           y: {
             beginAtZero: true,
-            grid: { color: "#f1f5f9", drawBorder: false },
+            grid: { color: gridColor, drawBorder: false },
             border: { display: false },
-            ticks: { font: { family: "Inter", size: 10 }, color: "#64748b" },
+            ticks: { font: { family: "Inter", size: 10 }, color: textColor },
           },
           x: {
             grid: { display: false, drawBorder: false },
             border: { display: false },
             ticks: {
               font: { family: "Inter", size: 9 },
-              color: "#64748b",
+              color: textColor,
               maxRotation: 45,
               minRotation: 45,
             },
@@ -2453,10 +3464,14 @@ const App = {
           plugins: {
             legend: {
               position: "top",
-              labels: { usePointStyle: true, font: { family: "Inter" } },
+              labels: {
+                usePointStyle: true,
+                font: { family: "Inter" },
+                color: textColor,
+              },
             },
             tooltip: {
-              backgroundColor: "#1e293b",
+              backgroundColor: tooltipBg,
               padding: 14,
               titleFont: { size: 13, family: "Inter" },
               bodyFont: { size: 14, family: "Inter", weight: "bold" },
@@ -2466,14 +3481,14 @@ const App = {
           scales: {
             y: {
               beginAtZero: true,
-              grid: { color: "#f1f5f9", drawBorder: false },
+              grid: { color: gridColor, drawBorder: false },
               border: { display: false },
-              ticks: { font: { family: "Inter" }, color: "#64748b" },
+              ticks: { font: { family: "Inter" }, color: textColor },
             },
             x: {
               grid: { display: false, drawBorder: false },
               border: { display: false },
-              ticks: { font: { family: "Inter" }, color: "#64748b" },
+              ticks: { font: { family: "Inter" }, color: textColor },
             },
           },
         },
@@ -2481,8 +3496,9 @@ const App = {
     }
   },
   renderMovementsLayout(title) {
-    const container = document.getElementById("content-area");
     if (!AuthService.getCurrentUser()) return;
+    const view = this.getOrCreateView("stock-move");
+    const vid = "stock-move";
 
     let depositsList = (FirestoreService.deposits || [])
       .map((d) => (d?.name ?? d?.categoria ?? d?.id ?? "").toString().trim())
@@ -2503,20 +3519,21 @@ const App = {
 
     if (!title) title = "Movimentação de Estoque";
     const actionsHeader = '<th class="px-4 py-4 text-right w-72">Ações</th>';
-    container.innerHTML = `
-      <div class="space-y-4 h-full flex flex-col animate-fade-in max-w-[1600px] mx-auto pt-2">
+    if (view.innerHTML === "") {
+      view.innerHTML = `
+      <div class="space-y-4 h-full flex flex-col min-h-0 animate-fade-in max-w-[1600px] mx-auto pt-2">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm z-10">
-          <div class="flex flex-col sm:flex-row gap-3">
-            <div class="relative group"><i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors"></i><input type="text" placeholder="Buscar código, nome..." value="${InventoryController.state.searchTerm}" oninput="InventoryController.handleSearch(this.value)" class="w-full sm:w-72 pl-10 pr-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 text-sm bg-slate-50 focus:bg-white transition-all shadow-sm"></div>
+          <div class="flex flex-col sm:flex-row gap-3 w-full">
+            <div class="relative group flex-1 md:flex-none"><i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors"></i><input type="text" placeholder="Buscar código, nome..." autocomplete="off" value="${InventoryController.state.searchTerm}" oninput="InventoryController.handleSearch(this.value)" class="w-full md:w-72 pl-10 pr-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 text-sm bg-slate-50 focus:bg-white transition-all shadow-sm"></div>
             <div class="relative">
-              <select id="filter-categoria" onchange="InventoryController.handleCategory(this.value)" class="appearance-none w-full sm:w-64 bg-white border border-slate-300 text-slate-700 py-2.5 pl-4 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm cursor-pointer shadow-sm hover:border-brand-400 transition-colors">
+              <select id="filter-categoria" onchange="InventoryController.handleCategory(this.value)" class="appearance-none w-full md:w-64 bg-slate-50 border-0 ring-1 ring-slate-200 focus:bg-white text-slate-700 py-3 pl-4 pr-10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm cursor-pointer shadow-sm transition-all">
                 ${categories.map((cat) => `<option value="${cat}" ${InventoryController.state.categoryFilter === cat ? "selected" : ""}>${cat}</option>`).join("")}
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" aria-hidden="true" class="lucide lucide-chevron-down w-4 h-4"><path d="m6 9 6 6 6-6"></path></svg></div>
             </div>
           </div>
         </div>
-        <div class="bg-transparent md:bg-white rounded-3xl shadow-none md:shadow-sm border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col">
+        <div class="bg-transparent md:bg-white rounded-3xl shadow-none md:shadow-sm border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col min-h-0">
           <div class="overflow-auto flex-1 custom-scrollbar"><table class="block md:table w-full text-sm text-left relative"><thead class="hidden md:table-header-group bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-widest sticky top-0 z-20 backdrop-blur-md border-b border-slate-200/80"><tr><th class="px-4 py-4 w-28">Código</th><th class="px-4 py-4 w-24">Cód. Int.</th><th class="px-4 py-4 min-w-[200px]">Descrição</th><th class="px-4 py-4 text-center w-20">Unid.</th><th class="px-4 py-4 text-center w-24">Saldo</th><th class="px-4 py-4 text-center w-20">Mín.</th><th class="px-4 py-4 text-center w-20">Ressup.</th><th class="px-4 py-4 text-center w-24">Status</th>${actionsHeader}</tr></thead><tbody id="inventory-body" class="block md:table-row-group divide-y-0 md:divide-y divide-slate-100 space-y-4 md:space-y-0"></tbody></table></div>
           <div class="bg-white md:bg-slate-50 px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3 mt-2 md:mt-0 shadow-sm md:shadow-none">
             <div class="text-xs text-slate-500">Total: <span id="total-records" class="font-bold">0</span> <span class="mx-2">•</span> Página <span id="current-page" class="font-bold text-slate-700">1</span> de <span id="total-pages" class="font-bold text-slate-700">1</span></div>
@@ -2527,16 +3544,33 @@ const App = {
           </div>
         </div>
       </div>`;
+      lucide.createIcons();
+    } else {
+      const elGlobal = view.querySelector(
+        'input[placeholder*="Buscar código"]',
+      );
+      if (elGlobal) elGlobal.value = InventoryController.state.searchTerm;
+      const elCat = view.querySelector("#filter-categoria");
+      if (elCat) elCat.value = InventoryController.state.categoryFilter;
+    }
     this.renderTableRows();
   },
   renderTableRows() {
-    const tbody = document.getElementById("inventory-body");
+    const viewId =
+      this.currentTab === "stock-favorites" ? "stock-search" : this.currentTab;
+    const view = document.getElementById(`view-${viewId}`);
+    if (!view) return;
+
+    const tbody =
+      view.querySelector("#inventory-body") || view.querySelector("tbody");
     if (!tbody) return;
     const { searchTerm, searchName, searchCode, categoryFilter, statusFilter } =
       InventoryController.state;
     const items = FirestoreService.items;
+    const userFavs = FirestoreService.profile?.favorites || [];
     const isMovementTab = this.currentTab === "stock-move";
     const isStockSearchTab = this.currentTab === "stock-search";
+    const isFavoritesTab = this.currentTab === "stock-favorites";
     const normalizeText = (text) =>
       text != null
         ? String(text)
@@ -2557,19 +3591,19 @@ const App = {
       return "Normal";
     };
     const filtered = items.filter((item) => {
+      if (isFavoritesTab && !userFavs.includes(String(item.id))) return false;
+
       const descNormalized = normalizeText(item.descricao);
       const codeNormalized = normalizeText(item.codigo);
       const internalCodeNormalized = normalizeText(item.codigoInterno);
 
       let matchesSearch = true;
-      if (isMovementTab) {
-        if (searchNormalized) {
-          matchesSearch =
-            descNormalized.includes(searchNormalized) ||
-            codeNormalized.includes(searchNormalized) ||
-            internalCodeNormalized.includes(searchNormalized);
-        }
-      } else if (isStockSearchTab) {
+      if (searchNormalized) {
+        matchesSearch =
+          descNormalized.includes(searchNormalized) ||
+          codeNormalized.includes(searchNormalized) ||
+          internalCodeNormalized.includes(searchNormalized);
+      } else if (isStockSearchTab || isFavoritesTab) {
         const matchesName =
           !searchNameNormalized ||
           descNormalized.includes(searchNameNormalized);
@@ -2588,7 +3622,7 @@ const App = {
       const matchesCategory = safeFilter === "TODAS" || safeCat === safeFilter;
 
       const matchesStatus =
-        !isStockSearchTab ||
+        !(isStockSearchTab || isFavoritesTab) ||
         statusFilter === "Todos" ||
         getStatus(item) === statusFilter;
       return matchesSearch && matchesCategory && matchesStatus;
@@ -2611,7 +3645,48 @@ const App = {
       }
     });
 
+    // --- ORDENAÇÃO ---
+    const sortCol = InventoryController.state.sortCol || "descricao";
+    const sortDesc = InventoryController.state.sortDesc || false;
+
+    uniqueItems.sort((a, b) => {
+      let valA = a[sortCol];
+      let valB = b[sortCol];
+
+      if (["estoque", "estoqueMinimo", "qtdRessuprimento"].includes(sortCol)) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || "").toString().toLowerCase();
+        valB = (valB || "").toString().toLowerCase();
+      }
+
+      if (valA < valB) return sortDesc ? 1 : -1;
+      if (valA > valB) return sortDesc ? -1 : 1;
+      return 0;
+    });
+
     InventoryController.state.currentExportData = uniqueItems;
+
+    [
+      "codigo",
+      "codigoInterno",
+      "descricao",
+      "unidade",
+      "estoque",
+      "estoqueMinimo",
+      "qtdRessuprimento",
+    ].forEach((c) => {
+      const el = view.querySelector("#sort-icon-" + viewId + "-" + c);
+      if (el) {
+        el.innerHTML =
+          c === sortCol
+            ? sortDesc
+              ? '<i data-lucide="arrow-down" class="inline w-3 h-3 ml-1 text-brand-500"></i>'
+              : '<i data-lucide="arrow-up" class="inline w-3 h-3 ml-1 text-brand-500"></i>'
+            : "";
+      }
+    });
 
     // --- Paginação ---
     const totalItems = uniqueItems.length;
@@ -2631,7 +3706,7 @@ const App = {
 
     const colSpan = 9;
     if (paginatedItems.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="px-6 py-20 text-center flex flex-col items-center justify-center text-slate-400"><div class="bg-slate-50 p-4 rounded-full mb-3"><i data-lucide="search-x" class="w-8 h-8"></i></div><span class="font-medium">Nenhum item encontrado</span><span class="text-xs mt-1">Tente ajustar os filtros de busca</span></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="px-6 py-20 text-center flex flex-col items-center justify-center text-slate-400"><div class="bg-slate-50 p-4 rounded-full mb-3"><i data-lucide="${isFavoritesTab ? "star-off" : "search-x"}" class="w-8 h-8"></i></div><span class="font-medium">${isFavoritesTab ? "Nenhum item favorito ainda" : "Nenhum item encontrado"}</span><span class="text-xs mt-1">${isFavoritesTab ? "Clique na estrela ao lado de um material para salvá-lo aqui." : "Tente ajustar os filtros de busca"}</span></td></tr>`;
     } else {
       tbody.innerHTML = paginatedItems
         .map((item, index) => {
@@ -2663,7 +3738,17 @@ const App = {
           if (isMovementTab) {
             actionsCell = `<td class="block md:table-cell px-0 py-3 md:px-4 md:py-4 text-center md:text-right mt-2 md:mt-0 border-t border-slate-100 md:border-none"><div class="flex flex-wrap md:flex-nowrap items-center justify-center md:justify-end gap-2 w-full"><button onclick="InventoryController.openMovementModal('${item.id}', 'entrada')" class="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 md:py-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-200/60 rounded-xl transition-all shadow-sm active:scale-95" title="Registrar Entrada"><i data-lucide="arrow-down-to-line" class="w-3.5 h-3.5"></i> Entrada</button><button onclick="InventoryController.openMovementModal('${item.id}', 'saida')" class="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 md:py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 hover:bg-rose-200 border border-rose-200/60 rounded-xl transition-all shadow-sm active:scale-95" title="Registrar Saída"><i data-lucide="arrow-up-from-line" class="w-3.5 h-3.5"></i> Saída</button></div></td>`;
           } else {
-            actionsCell = `<td class="block md:table-cell px-0 py-3 md:px-4 md:py-4 text-center md:text-right mt-2 md:mt-0 border-t border-slate-100 md:border-none"><div class="flex items-center justify-center md:justify-end gap-2 md:opacity-80 group-hover:opacity-100 transition-opacity w-full"><button onclick="InventoryController.openStockDetailModal('${item.id}')" class="w-full md:w-auto flex justify-center items-center gap-2 p-2.5 md:p-1.5 text-brand-600 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-xl md:rounded-lg transition-all shadow-sm hover:shadow active:scale-95" title="Ver Detalhes"><i data-lucide="eye" class="w-4 h-4 md:w-3.5 md:h-3.5"></i><span class="md:hidden text-xs font-bold uppercase tracking-wider">Ver Detalhes</span></button></div></td>`;
+            let adminActions = "";
+            if (AuthService.isAdmin()) {
+              adminActions = `
+                <button onclick="InventoryController.openEditModal('${item.id}')" class="p-2.5 md:p-1.5 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl md:rounded-lg transition-all shadow-sm active:scale-95" title="Editar Material"><i data-lucide="edit" class="w-4 h-4 md:w-3.5 md:h-3.5"></i></button>
+                <button onclick="InventoryController.deleteItem('${item.id}')" class="p-2.5 md:p-1.5 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl md:rounded-lg transition-all shadow-sm active:scale-95" title="Excluir Material"><i data-lucide="trash-2" class="w-4 h-4 md:w-3.5 md:h-3.5"></i></button>
+              `;
+            }
+            actionsCell = `<td class="block md:table-cell px-0 py-3 md:px-4 md:py-4 text-center md:text-right mt-2 md:mt-0 border-t border-slate-100 md:border-none"><div class="flex items-center justify-center md:justify-end gap-2 md:opacity-80 group-hover:opacity-100 transition-opacity w-full">
+              <button onclick="InventoryController.openStockDetailModal('${item.id}')" class="w-full md:w-auto flex justify-center items-center gap-2 p-2.5 md:p-1.5 text-brand-600 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-xl md:rounded-lg transition-all shadow-sm hover:shadow active:scale-95" title="Ver Detalhes"><i data-lucide="eye" class="w-4 h-4 md:w-3.5 md:h-3.5"></i><span class="md:hidden text-xs font-bold uppercase tracking-wider">Ver Detalhes</span></button>
+              ${adminActions}
+            </div></td>`;
           }
           const catRaw = (item.categoria || "").toString();
           const catShort = catRaw
@@ -2677,10 +3762,17 @@ const App = {
                 : status === "Alerta"
                   ? "text-amber-600"
                   : "text-slate-700";
+
+          const isFav = userFavs.includes(String(item.id));
+          const starIcon = isFav
+            ? `<i data-lucide="star" class="w-4 h-4 fill-amber-400 text-amber-400"></i>`
+            : `<i data-lucide="star" class="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors"></i>`;
+          const starBtn = `<button onclick="FirestoreService.toggleFavorite('${item.id}')" class="float-left p-1 -ml-1 mr-1.5 mt-0.5 rounded-md hover:bg-slate-100 transition-colors focus:outline-none" title="${isFav ? "Remover dos Favoritos" : "Adicionar aos Favoritos"}">${starIcon}</button>`;
+
           return `<tr class="${rowClass}" style="animation-delay: ${Math.min(index * 30, 400)}ms;">
             <td class="flex justify-between md:table-cell items-center px-0 py-2 md:px-4 md:py-4 border-b border-slate-100 md:border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider">Código</span><span class="font-mono text-xs text-slate-500">${Utils.escapeHTML(item.codigo)}</span></td>
             <td class="flex justify-between md:table-cell items-center px-0 py-2 md:px-4 md:py-4 border-b border-slate-100 md:border-none"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider">Cód. Int.</span><span class="font-mono text-xs text-slate-500">${Utils.escapeHTML(item.codigoInterno || "-")}</span></td>
-            <td class="block md:table-cell px-0 py-3 md:px-4 md:py-4 border-b border-slate-100 md:border-none"><div class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider mb-1">Descrição</div><div class="font-semibold text-slate-800 text-sm mb-0.5">${Utils.escapeHTML(item.descricao)}</div><div class="text-[10px] text-slate-400 uppercase tracking-wide truncate max-w-full md:max-w-[200px]" title="${Utils.escapeHTML(catRaw || "-")}">${Utils.escapeHTML(catShort)}</div></td>
+            <td class="block md:table-cell px-0 py-3 md:px-4 md:py-4 border-b border-slate-100 md:border-none"><div class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider mb-1">Descrição</div>${starBtn}<div class="font-semibold text-slate-800 text-sm mb-0.5">${Utils.escapeHTML(item.descricao)}</div><div class="text-[10px] text-slate-400 uppercase tracking-wide truncate max-w-full md:max-w-[200px]" title="${Utils.escapeHTML(catRaw || "-")}">${Utils.escapeHTML(catShort)}</div></td>
             <td class="flex justify-between md:table-cell items-center px-0 py-2 md:px-4 md:py-4 border-b border-slate-100 md:border-none text-left md:text-center"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider">Unidade</span><span class="text-xs text-slate-500">${Utils.escapeHTML(item.unidade || item.unidadeEntrada || "-")}</span></td>
             <td class="flex justify-between md:table-cell items-center px-0 py-2 md:px-4 md:py-4 border-b border-slate-100 md:border-none text-left md:text-center"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider">Saldo</span><span class="font-mono text-base font-bold ${estoqueClass}">${estoque}</span></td>
             <td class="flex justify-between md:table-cell items-center px-0 py-2 md:px-4 md:py-4 border-b border-slate-100 md:border-none text-left md:text-center"><span class="md:hidden font-bold text-[10px] text-slate-400 uppercase tracking-wider">Mínimo</span><span class="font-mono text-xs text-slate-500">${min}</span></td>
@@ -2692,15 +3784,15 @@ const App = {
         .join("");
     }
 
-    const counter = document.getElementById("total-records");
+    const counter = view.querySelector("#total-records");
     if (counter) counter.innerText = totalItems;
-    const pageSpan = document.getElementById("current-page");
+    const pageSpan = view.querySelector("#current-page");
     if (pageSpan) pageSpan.innerText = InventoryController.state.currentPage;
-    const totalPagesSpan = document.getElementById("total-pages");
+    const totalPagesSpan = view.querySelector("#total-pages");
     if (totalPagesSpan) totalPagesSpan.innerText = totalPages;
-    const btnPrev = document.getElementById("btn-prev-page");
+    const btnPrev = view.querySelector("#btn-prev-page");
     if (btnPrev) btnPrev.disabled = InventoryController.state.currentPage === 1;
-    const btnNext = document.getElementById("btn-next-page");
+    const btnNext = view.querySelector("#btn-next-page");
     if (btnNext)
       btnNext.disabled = InventoryController.state.currentPage === totalPages;
 
@@ -2789,8 +3881,229 @@ const App = {
     reader.readAsText(file);
     event.target.value = "";
   },
+  async handlePDFUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!AuthService.isAdmin()) {
+      ToastManager.show("Sem permissão para importar dados.", "error");
+      event.target.value = "";
+      return;
+    }
+
+    if (!window.pdfjsLib) {
+      ToastManager.show("Biblioteca de leitura de PDF não carregada.", "error");
+      event.target.value = "";
+      return;
+    }
+
+    const btnLabel = event.target.parentElement;
+    const originalHTML = btnLabel.innerHTML;
+    btnLabel.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin text-blue-500"></i> Lendo PDF...`;
+    lucide.createIcons();
+
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      const lines = {};
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        textContent.items.forEach((item) => {
+          const y = Math.round(item.transform[5]); // Agrupa itens pela mesma altura (eixo Y)
+          if (!lines[y]) lines[y] = [];
+          lines[y].push(item);
+        });
+      }
+
+      const sortedY = Object.keys(lines)
+        .map(Number)
+        .sort((a, b) => b - a);
+      const parsedLines = sortedY.map((y) => {
+        return lines[y]
+          .sort((a, b) => a.transform[4] - b.transform[4])
+          .map((item) => item.str)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+      });
+
+      let itemsToUpdate = new Map();
+      const itemsMap = new Map();
+
+      // Ordenar do maior nome para o menor para evitar matches parciais incorretos
+      const sortedItems = [...FirestoreService.items].sort((a, b) => {
+        const lenA = a.descricao ? a.descricao.length : 0;
+        const lenB = b.descricao ? b.descricao.length : 0;
+        return lenB - lenA;
+      });
+
+      sortedItems.forEach((i) => {
+        if (i.descricao) itemsMap.set(i.descricao.trim().toUpperCase(), i);
+      });
+
+      parsedLines.forEach((line) => {
+        let foundItem = null;
+        const upperLine = line.toUpperCase();
+        for (const [desc, item] of itemsMap.entries()) {
+          if (upperLine.includes(desc)) {
+            foundItem = item;
+            break;
+          }
+        }
+
+        if (foundItem) {
+          // Extrai os últimos dois números da linha (Estoque e Custo)
+          const numbers = line.match(/\b\d+(?:[.,]\d+)?\b/g);
+          if (numbers && numbers.length >= 2) {
+            const estoqueStr = numbers[numbers.length - 2].replace(",", ".");
+            const custoStr = numbers[numbers.length - 1].replace(",", ".");
+            const qty = parseFloat(estoqueStr);
+            const custo = parseFloat(custoStr);
+
+            if (!isNaN(qty) && !isNaN(custo)) {
+              itemsToUpdate.set(foundItem.id, {
+                id: foundItem.id,
+                novoSaldo: qty,
+                novoCusto: custo,
+                codigo: foundItem.codigo,
+                descricao: foundItem.descricao,
+              });
+            }
+          }
+        }
+      });
+
+      const updates = Array.from(itemsToUpdate.values());
+
+      if (updates.length === 0) {
+        ToastManager.show(
+          "Nenhuma atualização encontrada. Verifique se o PDF contém o nome exato dos materiais.",
+          "warning",
+        );
+      } else {
+        if (
+          !confirm(
+            `O robô encontrou ${updates.length} atualizações de saldo ou custo neste PDF.\n\nConfirmar essas atualizações e salvar na nuvem?`,
+          )
+        ) {
+          ToastManager.show(
+            "Atualização via PDF cancelada pelo usuário.",
+            "warning",
+          );
+          btnLabel.innerHTML = originalHTML;
+          lucide.createIcons();
+          event.target.value = "";
+          return;
+        }
+
+        btnLabel.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin text-blue-500"></i> Salvando...`;
+        lucide.createIcons();
+
+        const writeInBatches = async (updatesArray) => {
+          let changesCount = 0;
+          for (let i = 0; i < updatesArray.length; i += 200) {
+            const chunk = updatesArray.slice(i, i + 200);
+            const batch = writeBatch(db);
+            chunk.forEach((update) => {
+              const currentItem = FirestoreService.items.find(
+                (it) => String(it.id) === String(update.id),
+              );
+              const prevStock = currentItem
+                ? Number(currentItem.estoque) || 0
+                : 0;
+              const prevCost = currentItem
+                ? Number(currentItem.custoMedio) || 0
+                : 0;
+              const diff = update.novoSaldo - prevStock;
+              const costDiff = update.novoCusto - prevCost;
+
+              if (diff !== 0 || costDiff !== 0) {
+                changesCount++;
+                const docRef = doc(db, "items", String(update.id));
+                const patch = {};
+                if (diff !== 0) patch.estoque = update.novoSaldo;
+                if (costDiff !== 0) patch.custoMedio = update.novoCusto;
+                batch.update(docRef, patch);
+
+                if (diff !== 0) {
+                  const movRef = doc(collection(db, "movements"));
+                  batch.set(movRef, {
+                    itemId: update.id,
+                    itemCodigo: update.codigo || "",
+                    itemDesc: update.descricao || "",
+                    type: diff > 0 ? "entrada" : "saida",
+                    qty: Math.abs(diff),
+                    reason: "Ajuste em lote via PDF",
+                    previousStock: prevStock,
+                    newStock: update.novoSaldo,
+                    userName: AuthService.getCurrentUser()?.name || "Sistema",
+                    date: serverTimestamp(),
+                  });
+                }
+              }
+            });
+            await batch.commit();
+          }
+          return changesCount;
+        };
+
+        const changed = await writeInBatches(updates);
+        if (changed > 0) {
+          ToastManager.show(
+            `Saldo de ${changed} materiais atualizados com sucesso!`,
+            "success",
+          );
+          if (App.currentTab === "dashboard") App.renderDashboard();
+          else App.refreshUI();
+        } else {
+          ToastManager.show(
+            "Os saldos do PDF já são iguais aos do sistema.",
+            "warning",
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao processar PDF:", err);
+      ToastManager.show("Erro ao ler o arquivo PDF.", "error");
+    } finally {
+      btnLabel.innerHTML = originalHTML;
+      lucide.createIcons();
+      event.target.value = "";
+    }
+  },
+  exportPDFUpdateTemplate() {
+    const delimiter = ";";
+    const header = ["MATERIAL", "SALDO", "CUSTO R$"].join(delimiter);
+
+    const escapeCsv = (value) => {
+      const str = value == null ? "" : String(value);
+      return /["\n\r;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
+    const rows = FirestoreService.items.map((item) => {
+      return [item.descricao || "", item.estoque || 0, item.custoMedio || 0]
+        .map(escapeCsv)
+        .join(delimiter);
+    });
+
+    const csvContent = `\uFEFF${header}\n${rows.join("\n")}`;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `modelo_atualizacao_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
   renderHistoryLayout() {
-    const container = document.getElementById("content-area");
+    const view = this.getOrCreateView("movement-search");
     const uniqueUsers = [
       ...new Set(
         (FirestoreService.movements || [])
@@ -2799,11 +4112,12 @@ const App = {
       ),
     ].sort();
 
-    container.innerHTML = `
-      <div class="space-y-4 h-full flex flex-col animate-fade-in max-w-7xl mx-auto pt-2">
+    if (view.innerHTML === "") {
+      view.innerHTML = `
+      <div class="space-y-4 h-full flex flex-col min-h-0 animate-fade-in max-w-7xl mx-auto pt-2">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm z-10">
           <div class="flex flex-col sm:flex-row gap-3 w-full">
-            <div class="relative group flex-1"><i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors"></i><input type="text" id="search-history" placeholder="Buscar material, código..." oninput="App.renderHistoryTableRows()" class="w-full pl-10 pr-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 text-sm bg-slate-50 focus:bg-white transition-all shadow-sm"></div>
+            <div class="relative group flex-1"><i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors"></i><input type="text" id="search-history" autocomplete="off" placeholder="Buscar material, código..." oninput="App.renderHistoryTableRows()" class="w-full pl-10 pr-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 text-sm bg-slate-50 focus:bg-white transition-all shadow-sm"></div>
             <div class="relative">
               <select id="filter-user-history" onchange="App.renderHistoryTableRows()" class="appearance-none w-full sm:w-56 bg-slate-50 border-0 ring-1 ring-slate-200 focus:bg-white text-slate-700 py-3 pl-4 pr-10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm cursor-pointer shadow-sm transition-all">
                 <option value="">Todos os Usuários</option>
@@ -2811,21 +4125,26 @@ const App = {
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="m6 9 6 6 6-6"></path></svg></div>
             </div>
-            <button onclick="App.exportHistoryToPDF()" class="w-full sm:w-auto px-5 py-3 bg-red-600 text-white text-sm font-bold rounded-2xl shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 active:scale-95 shrink-0"><i data-lucide="file-text" class="w-4 h-4"></i> Exportar PDF</button>
+            <div class="flex gap-2 w-full sm:w-auto">
+              <button onclick="App.printHistory()" class="flex-1 px-4 py-3 bg-slate-800 text-white text-sm font-bold rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2 active:scale-95" title="Imprimir Relatório"><i data-lucide="printer" class="w-4 h-4"></i> Imprimir</button>
+              <button onclick="App.exportHistoryToCSV()" class="flex-1 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-2xl shadow-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 active:scale-95" title="Exportar CSV"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> CSV</button>
+              <button onclick="App.exportHistoryToPDF()" class="flex-1 px-4 py-3 bg-red-600 text-white text-sm font-bold rounded-2xl shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 active:scale-95" title="Exportar PDF"><i data-lucide="file-text" class="w-4 h-4"></i> PDF</button>
+            </div>
           </div>
         </div>
-        <div class="bg-transparent md:bg-white rounded-3xl shadow-none md:shadow-sm border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col">
+        <div class="bg-transparent md:bg-white rounded-3xl shadow-none md:shadow-sm border border-transparent md:border-slate-200/60 overflow-hidden flex-1 flex flex-col min-h-0">
           <div class="overflow-auto flex-1 custom-scrollbar">
             <table class="block md:table w-full text-sm text-left relative">
               <thead class="hidden md:table-header-group bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-widest sticky top-0 z-20 backdrop-blur-md border-b border-slate-200/80">
-                <tr><th class="px-4 py-4 w-40">Data/Hora</th><th class="px-4 py-4 w-48">Usuário</th><th class="px-4 py-4 min-w-[200px]">Material</th><th class="px-4 py-4 text-center w-20">Tipo</th><th class="px-4 py-4 text-right w-20">Qtd</th><th class="px-4 py-4 text-right w-24">Saldo Ant.</th><th class="px-4 py-4 text-right w-24">Novo Saldo</th></tr>
+                <tr><th class="px-4 py-4 w-40 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="App.sortHistory('date')">Data/Hora <span id="sort-icon-hist-date"></span></th><th class="px-4 py-4 w-48 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="App.sortHistory('userName')">Usuário <span id="sort-icon-hist-userName"></span></th><th class="px-4 py-4 min-w-[200px] cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="App.sortHistory('itemDesc')">Material <span id="sort-icon-hist-itemDesc"></span></th><th class="px-4 py-4 text-center w-20 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="App.sortHistory('type')">Tipo <span id="sort-icon-hist-type"></span></th><th class="px-4 py-4 text-right w-20 cursor-pointer hover:text-brand-600 transition-colors select-none" onclick="App.sortHistory('qty')">Qtd <span id="sort-icon-hist-qty"></span></th><th class="px-4 py-4 text-right w-24">Saldo Ant.</th><th class="px-4 py-4 text-right w-24">Novo Saldo</th></tr>
               </thead>
               <tbody id="history-body" class="block md:table-row-group divide-y-0 md:divide-y divide-slate-100 bg-transparent md:bg-white space-y-4 md:space-y-0"></tbody>
             </table>
           </div>
         </div>
       </div>`;
-    lucide.createIcons();
+      lucide.createIcons();
+    }
     this.renderHistoryTableRows();
   },
   renderHistoryTableRows() {
@@ -2847,6 +4166,42 @@ const App = {
       const matchesUser = !userFilter || mov.userName === userFilter;
       return matchesSearch && matchesUser;
     });
+
+    const sortCol = this.historySortCol || "date";
+    const sortDesc = this.historySortDesc;
+
+    filtered.sort((a, b) => {
+      let valA = a[sortCol];
+      let valB = b[sortCol];
+
+      if (sortCol === "date") {
+        valA = a.date?.toDate ? a.date.toDate().getTime() : 0;
+        valB = b.date?.toDate ? b.date.toDate().getTime() : 0;
+      } else if (sortCol === "qty") {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || "").toString().toLowerCase();
+        valB = (valB || "").toString().toLowerCase();
+      }
+
+      if (valA < valB) return sortDesc ? 1 : -1;
+      if (valA > valB) return sortDesc ? -1 : 1;
+      return 0;
+    });
+
+    ["date", "userName", "itemDesc", "type", "qty"].forEach((c) => {
+      const el = document.getElementById("sort-icon-hist-" + c);
+      if (el) {
+        el.innerHTML =
+          c === sortCol
+            ? sortDesc
+              ? '<i data-lucide="arrow-down" class="inline w-3 h-3 ml-1 text-brand-500"></i>'
+              : '<i data-lucide="arrow-up" class="inline w-3 h-3 ml-1 text-brand-500"></i>'
+            : "";
+      }
+    });
+
     if (filtered.length === 0) {
       tbody.innerHTML =
         '<tr><td colspan="7" class="px-6 py-20 text-center text-slate-400">Nenhuma movimentação encontrada.</td></tr>';
@@ -2883,6 +4238,78 @@ const App = {
       })
       .join("");
   },
+  exportHistoryToCSV() {
+    const searchInput =
+      document.getElementById("search-history")?.value.toLowerCase() || "";
+    const userFilter =
+      document.getElementById("filter-user-history")?.value || "";
+
+    const filtered = (FirestoreService.movements || []).filter((mov) => {
+      const matchStr = (
+        (mov.itemDesc || "") +
+        (mov.itemCodigo || "") +
+        (mov.itemCodigoInterno || "") +
+        (mov.userName || "")
+      ).toLowerCase();
+      const matchS = matchStr.includes(searchInput);
+      const matchU = !userFilter || mov.userName === userFilter;
+      return matchS && matchU;
+    });
+
+    if (filtered.length === 0)
+      return ToastManager.show("Não há dados para exportar.", "warning");
+
+    const delimiter = ";";
+    const escapeCsv = (value) => {
+      const str = value == null ? "" : String(value);
+      return /["\n\r;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
+    const header = [
+      "Data/Hora",
+      "Usuário",
+      "Código",
+      "Cód. Interno",
+      "Material",
+      "Tipo",
+      "Qtd",
+      "Motivo",
+      "Saldo Anterior",
+      "Novo Saldo",
+    ].join(delimiter);
+
+    const rows = filtered.map((mov) => {
+      const dateStr = mov.date?.toDate
+        ? mov.date.toDate().toLocaleString("pt-BR")
+        : "-";
+      return [
+        dateStr,
+        mov.userName || "-",
+        mov.itemCodigo || "-",
+        mov.itemCodigoInterno || "-",
+        mov.itemDesc || "-",
+        mov.type === "entrada" ? "Entrada" : "Saída",
+        mov.qty || 0,
+        mov.reason || "-",
+        mov.previousStock !== undefined ? mov.previousStock : "-",
+        mov.newStock !== undefined ? mov.newStock : "-",
+      ]
+        .map(escapeCsv)
+        .join(delimiter);
+    });
+
+    const csvContent = `\uFEFF${header}\n${rows.join("\n")}`; // BOM para forçar UTF-8 no Excel
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `auditoria_movimentacoes_${new Date().getTime()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    ToastManager.show("Relatório CSV gerado com sucesso!", "success");
+  },
   exportHistoryToPDF() {
     if (!window.jspdf)
       return ToastManager.show("Módulo PDF carregando...", "warning");
@@ -2908,10 +4335,36 @@ const App = {
     if (filtered.length === 0)
       return ToastManager.show("Não há dados para exportar.", "warning");
 
+    const tenantName = FirestoreService.profile?.tenantName || "Empresa";
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Título Principal (Esquerda)
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59); // text-slate-800
+    doc.text("SEROB", 14, 20);
+
+    // Título Secundário (Direita)
     doc.setFontSize(14);
-    doc.text("Relatório de Movimentações (Log de Usuários) - SEROB", 14, 15);
+    doc.text("Auditoria e Histórico de Sistema", pageWidth - 14, 18, {
+      align: "right",
+    });
+
+    // Subtítulo dinâmico (Direita)
     doc.setFontSize(10);
-    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 22);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139); // text-slate-500
+    doc.text(
+      `Emissão: ${new Date().toLocaleString("pt-BR")} | Empresa: ${tenantName}`,
+      pageWidth - 14,
+      24,
+      { align: "right" },
+    );
+
+    // Linha divisória fina cinza
+    doc.setDrawColor(226, 232, 240); // border-slate-200
+    doc.setLineWidth(0.5);
+    doc.line(14, 28, pageWidth - 14, 28);
 
     const tableData = filtered.map((mov) => [
       mov.date?.toDate ? mov.date.toDate().toLocaleString("pt-BR") : "-",
@@ -2924,7 +4377,7 @@ const App = {
     ]);
 
     doc.autoTable({
-      startY: 28,
+      startY: 34,
       head: [
         [
           "Data/Hora",
@@ -2942,12 +4395,121 @@ const App = {
       headStyles: { fillColor: [37, 99, 235] }, // Azul brand-600
     });
 
+    const pageCount = doc.internal.getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageWidth - 14,
+        doc.internal.pageSize.height - 10,
+        { align: "right" },
+      );
+    }
+
     doc.save(`auditoria_movimentacoes_${new Date().getTime()}.pdf`);
     ToastManager.show("Relatório PDF gerado com sucesso!", "success");
   },
+  printHistory() {
+    const searchInput =
+      document.getElementById("search-history")?.value.toLowerCase() || "";
+    const userFilter =
+      document.getElementById("filter-user-history")?.value || "";
+
+    const filtered = (FirestoreService.movements || []).filter((mov) => {
+      const matchStr = (
+        (mov.itemDesc || "") +
+        (mov.itemCodigo || "") +
+        (mov.itemCodigoInterno || "") +
+        (mov.userName || "")
+      ).toLowerCase();
+      const matchS = matchStr.includes(searchInput);
+      const matchU = !userFilter || mov.userName === userFilter;
+      return matchS && matchU;
+    });
+
+    if (filtered.length === 0)
+      return ToastManager.show("Não há dados para imprimir.", "warning");
+
+    const printWindow = window.open("", "_blank");
+    const tenantName = Utils.escapeHTML(
+      FirestoreService.profile?.tenantName || "Empresa",
+    );
+    let html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Relatório de Movimentações</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 20px; }
+          .logo-container { display: flex; align-items: center; gap: 10px; }
+          /* Caso queira usar a logo da sua empresa em formato de imagem, troque o SVG abaixo por <img src="URL_DA_SUA_IMAGEM" style="max-width: 150px;"/> */
+          .logo-container svg { width: 36px; height: 36px; fill: #2563eb; }
+          .logo-container h1 { margin: 0; font-size: 24px; color: #1e293b; letter-spacing: -0.5px; font-weight: 800; }
+          .title-container { text-align: right; }
+          .title-container h2 { margin: 0 0 4px 0; color: #1e293b; font-size: 16px; font-weight: bold; }
+          .subtitle { color: #64748b; font-size: 12px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+          th { background-color: #f8fafc; color: #475569; font-weight: bold; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          @media print {
+            @page { margin: 1cm; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo-container">
+            <svg viewBox="0 0 101.968 101.968">
+              <path d="M24.715,47.432L7.968,64.86v29.406c0,0.828,0.671,1.5,1.5,1.5h20.334c0.828,0,1.5-0.672,1.5-1.5V49.158l-4.69-1.726H24.715z"/>
+              <path d="M66.135,61.1H45.801c-0.828,0-1.5,0.672-1.5,1.5v31.666c0,0.828,0.672,1.5,1.5,1.5h20.334c0.829,0,1.5-0.672,1.5-1.5V62.6C67.635,61.772,66.964,61.1,66.135,61.1z"/>
+              <path d="M101.724,29.49c-0.777,0.406-1.652,0.621-2.53,0.621c-1.276,0-2.521-0.45-3.5-1.27l-3.694-3.088l-13.365,14.58v53.934c0,0.828,0.672,1.5,1.5,1.5h20.334c0.829,0,1.5-0.672,1.5-1.5v-64.93C101.885,29.387,101.81,29.445,101.724,29.49z"/>
+              <path d="M57.797,54.094c1.144,0.419,2.424,0.108,3.248-0.788l30.839-33.643l7.217,6.032c0.353,0.294,0.847,0.349,1.254,0.136c0.407-0.214,0.646-0.648,0.605-1.107L99.396,7.235c-0.055-0.625-0.606-1.086-1.231-1.029l-17.49,1.563c-0.458,0.041-0.846,0.354-0.982,0.791C79.646,8.706,79.631,8.854,79.644,9c0.026,0.294,0.167,0.572,0.403,0.769l7.229,6.043L57.98,47.769L24.535,35.463c-1.118-0.41-2.373-0.121-3.198,0.735l-20.5,21.333c-1.148,1.195-1.11,3.095,0.084,4.242c0.583,0.561,1.332,0.837,2.079,0.837c0.788,0,1.574-0.309,2.164-0.921l19.141-19.92L57.797,54.094z"/>
+            </svg>
+            <h1>SEROB</h1>
+          </div>
+          <div class="title-container">
+            <h2>Auditoria e Histórico de Sistema</h2>
+            <div class="subtitle">Emissão: ${new Date().toLocaleString("pt-BR")} | Empresa: <strong>${tenantName}</strong></div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Data/Hora</th><th>Usuário</th><th>Código</th><th>Cód. Int.</th><th>Material</th><th class="center">Tipo</th><th class="right">Qtd</th><th>Motivo</th></tr>
+          </thead>
+          <tbody>
+    `;
+
+    filtered.forEach((mov) => {
+      const dateStr = mov.date?.toDate
+        ? mov.date.toDate().toLocaleString("pt-BR")
+        : "-";
+      const tipo = mov.type === "entrada" ? "Entrada" : "Saída";
+      html += `<tr><td>${dateStr}</td><td>${Utils.escapeHTML(mov.userName || "-")}</td><td>${Utils.escapeHTML(mov.itemCodigo || "-")}</td><td>${Utils.escapeHTML(mov.itemCodigoInterno || "-")}</td><td>${Utils.escapeHTML(mov.itemDesc || "-")}</td><td class="center">${tipo}</td><td class="right">${mov.qty || 0}</td><td>${Utils.escapeHTML(mov.reason || "-")}</td></tr>`;
+    });
+
+    html += `
+          </tbody>
+        </table>
+        <script>
+          window.onload = function() { setTimeout(function() { window.print(); window.close(); }, 250); };
+        </script>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  },
   renderRegisterLayout() {
-    const container = document.getElementById("content-area");
-    container.innerHTML = `
+    const view = this.getOrCreateView("material-register");
+    if (view.innerHTML === "") {
+      view.innerHTML = `
       <div class="max-w-3xl mx-auto animate-fade-in pt-4">
         <div class="bg-white rounded-3xl shadow-lg shadow-slate-200/40 border border-slate-200/60 p-8 md:p-10 relative overflow-hidden">
           <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-500 to-indigo-500"></div>
@@ -2955,28 +4517,29 @@ const App = {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <div>
   <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Descrição do Material</label>
-  <input type="text" id="new-descricao" list="lista-descricoes" onchange="InventoryController.handleDescricaoAutoFill()" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" placeholder="Nome completo do item" required />
+  <input type="text" id="new-descricao" list="lista-descricoes" onchange="InventoryController.handleDescricaoAutoFill()" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" placeholder="Nome completo do item" required />
   <datalist id="lista-descricoes">
     ${[...new Set((FirestoreService.items || []).map((i) => i.descricao).filter(Boolean))].map((desc) => `<option value="${Utils.escapeHTML(desc)}"></option>`).join("")}
   </datalist>
 </div>
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Cód. Interno</label><input type="text" id="new-codigo-interno" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm font-mono text-sm" placeholder="Ex: 12345" required oninput="InventoryController.handleCodigoInternoAutoFill()" /></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Cód. Interno</label><input type="text" id="new-codigo-interno" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm font-mono text-sm" placeholder="Ex: 12345" required oninput="InventoryController.handleCodigoInternoAutoFill()" /></div>
             </div>
             <div class="grid grid-cols-2 gap-6">
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Categoria</label><select id="new-categoria" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" required></select></div>
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Unidade</label><input type="text" id="new-unidade" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" placeholder="Ex: Unidade" required /></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Categoria</label><select id="new-categoria" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" required></select></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Unidade</label><input type="text" id="new-unidade" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm" placeholder="Ex: Unidade" required /></div>
             </div>
             <div class="grid grid-cols-3 gap-6 border-t border-slate-100 pt-6 mt-2">
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Estoque Inicial</label><input type="number" id="new-estoque" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="0" /></div>
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Mínimo</label><input type="number" id="new-minimo" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="5" /></div>
-              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Ressuprimento</label><input type="number" id="new-ressup" class="w-full px-4 py-3.5 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="10" /></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Estoque Inicial</label><input type="number" id="new-estoque" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="0" /></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Mínimo</label><input type="number" id="new-minimo" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="5" /></div>
+              <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Ressuprimento</label><input type="number" id="new-ressup" class="w-full px-4 py-3 border-0 ring-1 ring-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none transition-all bg-slate-50 focus:bg-white shadow-sm text-sm font-mono" value="10" /></div>
             </div>
-            <div class="flex justify-end pt-6"><button type="submit" class="px-8 py-4 bg-brand-600 text-white font-bold rounded-2xl shadow-lg shadow-brand-600/30 hover:bg-brand-700 transition-all transform active:scale-95 flex items-center gap-2"><i data-lucide="check" class="w-5 h-5"></i> Salvar Material</button></div>
+            <div class="flex justify-end pt-6"><button type="submit" class="px-8 py-3 bg-brand-600 text-white text-sm font-bold rounded-2xl shadow-lg shadow-brand-600/30 hover:bg-brand-700 transition-all transform active:scale-95 flex items-center gap-2"><i data-lucide="check" class="w-5 h-5"></i> Salvar Material</button></div>
           </form>
         </div>
       </div>`;
-    lucide.createIcons();
-    this.renderDepositOptions();
+      lucide.createIcons();
+      this.renderDepositOptions();
+    }
   },
   viewTenantDetails() {
     const tenantName = FirestoreService.profile?.tenantName || "COENG | DETEC";
@@ -2993,16 +4556,49 @@ const App = {
       `- Movimentações Registradas: ${totalMovs}`;
     alert(alertMsg);
   },
-  renderSaaSAdmin() {
-    const container = document.getElementById("content-area");
-    container.innerHTML = `
+  async toggleUserStatus(uid, currentStatus) {
+    if (
+      !confirm(
+        `Tem certeza que deseja ${currentStatus ? "desativar" : "ativar"} o acesso deste usuário?`,
+      )
+    )
+      return;
+    try {
+      const newStatus = await FirestoreService.toggleUserStatus(
+        uid,
+        currentStatus,
+      );
+      ToastManager.show(
+        `Usuário ${newStatus ? "ativado" : "desativado"} com sucesso!`,
+        "success",
+      );
+      // Força o recarregamento visual da tabela
+      const view = document.getElementById("view-saas-admin");
+      if (view) view.innerHTML = "";
+      this.renderSaaSAdmin();
+    } catch (e) {
+      console.error(e);
+      ToastManager.show("Erro ao alterar status do usuário.", "error");
+    }
+  },
+  async renderSaaSAdmin() {
+    const view = this.getOrCreateView("saas-admin");
+    if (view.innerHTML === "") {
+      view.innerHTML = `<div class="p-12 text-center flex flex-col items-center justify-center"><i data-lucide="loader" class="w-8 h-8 animate-spin text-brand-500 mb-4"></i><span class="text-slate-500 font-medium">Carregando dados do painel...</span></div>`;
+      lucide.createIcons();
+    }
+
+    try {
+      const usersList = await FirestoreService.getUsers();
+
+      view.innerHTML = `
       <div class="space-y-6 animate-fade-in max-w-7xl mx-auto pt-4">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 shadow-xl text-white relative overflow-hidden">
            <div class="absolute top-0 right-0 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4"><i data-lucide="shield-check" class="w-64 h-64"></i></div>
            <div class="relative z-10">
               <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold uppercase tracking-wider mb-4 border border-purple-500/30"><i data-lucide="crown" class="w-3.5 h-3.5"></i> Super Admin</div>
               <h2 class="text-3xl font-extrabold tracking-tight mb-2">Painel de Gestão Multiempresa</h2>
-              <p class="text-slate-400">Controle total sobre faturamento, empresas clientes e métricas globais do SaaS.</p>
+              <p class="text-slate-400">Controle total sobre contas de usuários, acessos e métricas globais do SaaS.</p>
            </div>
         </div>
         
@@ -3015,7 +4611,7 @@ const App = {
            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/60">
               <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4"><i data-lucide="users" class="w-5 h-5"></i></div>
               <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Usuários Registrados</p>
-              <h3 class="text-4xl font-extrabold text-slate-800">3</h3>
+              <h3 class="text-4xl font-extrabold text-slate-800">${usersList.length}</h3>
            </div>
            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/60">
               <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4"><i data-lucide="credit-card" class="w-5 h-5"></i></div>
@@ -3025,16 +4621,45 @@ const App = {
         </div>
         
         <div class="bg-white rounded-3xl shadow-sm border border-slate-200/60 overflow-hidden mt-6">
-           <div class="p-6 border-b border-slate-100"><h3 class="font-bold text-slate-800">Clientes (Tenants)</h3></div>
-           <table class="w-full text-left text-sm">
-             <thead class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider"><tr><th class="px-6 py-4">Empresa</th><th class="px-6 py-4">Plano</th><th class="px-6 py-4 text-center">Status</th><th class="px-6 py-4 text-right">Ação</th></tr></thead>
-             <tbody class="divide-y divide-slate-100">
-                <tr class="hover:bg-slate-50"><td class="px-6 py-4 font-semibold text-slate-800">${FirestoreService.profile.tenantName || "COENG | DETEC"}</td><td class="px-6 py-4 text-slate-500">Pro SaaS</td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-xs font-bold">Ativo</span></td><td class="px-6 py-4 text-right"><button onclick="App.viewTenantDetails()" class="text-brand-600 font-bold text-xs hover:underline">Ver Detalhes</button></td></tr>
-             </tbody>
-           </table>
+           <div class="p-6 border-b border-slate-100"><h3 class="font-bold text-slate-800">Gerenciamento de Usuários</h3></div>
+           <div class="overflow-x-auto">
+             <table class="w-full text-left text-sm whitespace-nowrap">
+               <thead class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider"><tr><th class="px-6 py-4">Nome</th><th class="px-6 py-4">Email</th><th class="px-6 py-4">Empresa</th><th class="px-6 py-4">Função</th><th class="px-6 py-4 text-center">Status</th><th class="px-6 py-4 text-right">Ação</th></tr></thead>
+               <tbody class="divide-y divide-slate-100">
+                  ${usersList
+                    .map((u) => {
+                      const isActive = u.active !== false;
+                      const statusHtml = isActive
+                        ? '<span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider">Ativo</span>'
+                        : '<span class="px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-bold uppercase tracking-wider">Inativo</span>';
+                      const actionText = isActive
+                        ? "Desativar Conta"
+                        : "Reativar Conta";
+                      const actionClass = isActive
+                        ? "text-red-600 hover:text-red-800"
+                        : "text-emerald-600 hover:text-emerald-800";
+                      const isSelf =
+                        u.uid === AuthService.getCurrentUser()?.uid;
+                      const actionBtn = isSelf
+                        ? '<span class="text-slate-400 text-xs italic font-medium px-2">Você</span>'
+                        : `<button onclick="App.toggleUserStatus('${u.uid}', ${isActive})" class="font-bold text-xs px-3 py-1.5 rounded-lg border border-transparent hover:border-current transition-all active:scale-95 ${actionClass}">${actionText}</button>`;
+                      const roleLabel =
+                        u.label ||
+                        (u.role === "admin" ? "Administrador" : "Usuário");
+
+                      return `<tr class="hover:bg-slate-50 transition-colors"><td class="px-6 py-4 font-semibold text-slate-800">${Utils.escapeHTML(u.name || "Sem nome")}</td><td class="px-6 py-4 text-slate-500">${Utils.escapeHTML(u.email || "-")}</td><td class="px-6 py-4 text-slate-500">${Utils.escapeHTML(u.tenantName || "-")}</td><td class="px-6 py-4 text-slate-500 capitalize">${Utils.escapeHTML(roleLabel)}</td><td class="px-6 py-4 text-center">${statusHtml}</td><td class="px-6 py-4 text-right">${actionBtn}</td></tr>`;
+                    })
+                    .join("")}
+               </tbody>
+             </table>
+           </div>
         </div>
       </div>`;
-    lucide.createIcons();
+      lucide.createIcons();
+    } catch (error) {
+      console.error("Erro ao carregar SaaS Admin:", error);
+      view.innerHTML = `<div class="p-8 text-center text-red-500">Erro ao carregar dados do painel de administração. Verifique sua conexão.</div>`;
+    }
   },
 };
 

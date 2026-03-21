@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Política de Privacidade - SEROB</title>
+
+    <!-- Favicon e Apple Touch Icon -->
+    <link rel="icon" type="image/svg+xml" sizes="any" href="./favicon.svg" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./apple-touch-icon.png"
+    />
+    <link rel="mask-icon" color="#2563eb" href="./favicon.svg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                800: "#1e40af",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body
+    class="bg-slate-50 text-slate-700 font-sans antialiased selection:bg-brand-100 selection:text-brand-900"
+  >
+    <!-- Topo Simples -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <div
+        class="max-w-5xl mx-auto px-6 h-20 flex items-center justify-between"
+      >
+        <a href="./index.html" class="flex items-center gap-3 group">
+          <div
+            class="bg-brand-600 p-2 rounded-xl shadow-sm group-hover:scale-105 transition-transform"
+          >
+            <i data-lucide="package" class="w-5 h-5 text-white"></i>
+          </div>
+          <span class="font-extrabold text-xl text-slate-900 tracking-tight"
+            >SEROB</span
+          >
+        </a>
+        <a
+          href="./index.html"
+          class="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors"
+        >
+          <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          Voltar ao Início
+        </a>
+      </div>
+    </header>
+
+    <!-- Conteúdo da Política de Privacidade -->
+    <main class="max-w-4xl mx-auto px-6 py-16 animate-fade-in">
+      <div
+        class="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 md:p-12"
+      >
+        <h1 class="text-3xl font-extrabold text-slate-900 mb-2">
+          Política de Privacidade
+        </h1>
+        <p class="text-sm text-slate-500 mb-10 pb-6 border-b border-slate-100">
+          Última atualização: 24 de Outubro de 2024
+        </p>
+
+        <div class="space-y-8 text-slate-600 leading-relaxed">
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              1. Coleta de Informações
+            </h2>
+            <p>
+              Coletamos informações fornecidas por você durante a criação da
+              conta, como nome, endereço de e-mail e dados da empresa. Também
+              registramos automaticamente as movimentações realizadas dentro do
+              sistema SEROB para fins de auditoria e funcionamento do software.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              2. Uso dos Dados
+            </h2>
+            <p>
+              Seus dados são utilizados exclusivamente para o fornecimento,
+              manutenção e melhoria dos nossos serviços. A inteligência
+              artificial utiliza os dados de consumo de estoque de forma isolada
+              e criptografada (multi-tenant) apenas para gerar previsões de
+              reposição para a sua própria empresa.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              3. Compartilhamento e Segurança
+            </h2>
+            <p>
+              Não vendemos, alugamos ou compartilhamos suas informações pessoais
+              com terceiros. Seus dados são armazenados em servidores seguros na
+              nuvem e utilizamos criptografia para proteger as credenciais de
+              acesso e a integridade do seu banco de dados.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              4. Direitos do Usuário
+            </h2>
+            <p>
+              Você pode acessar, corrigir ou solicitar a exclusão de suas
+              informações a qualquer momento através do sistema ou entrando em
+              contato com nosso suporte. A exclusão da conta pode resultar na
+              remoção permanente do seu banco de dados.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="text-center py-8 text-sm text-slate-400 font-medium">
+      &copy; 2024 SEROB. Todos os direitos reservados.
+    </footer>
+
+    <script>
+      // Inicializa os ícones do Lucide
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

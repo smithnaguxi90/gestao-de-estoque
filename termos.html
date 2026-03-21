@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Termos de Uso - SEROB</title>
+
+    <!-- Favicon e Apple Touch Icon -->
+    <link rel="icon" type="image/svg+xml" sizes="any" href="./favicon.svg" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./apple-touch-icon.png"
+    />
+    <link rel="mask-icon" color="#2563eb" href="./favicon.svg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              brand: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                800: "#1e40af",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body
+    class="bg-slate-50 text-slate-700 font-sans antialiased selection:bg-brand-100 selection:text-brand-900"
+  >
+    <!-- Topo Simples -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <div
+        class="max-w-5xl mx-auto px-6 h-20 flex items-center justify-between"
+      >
+        <a href="./index.html" class="flex items-center gap-3 group">
+          <div
+            class="bg-brand-600 p-2 rounded-xl shadow-sm group-hover:scale-105 transition-transform"
+          >
+            <i data-lucide="package" class="w-5 h-5 text-white"></i>
+          </div>
+          <span class="font-extrabold text-xl text-slate-900 tracking-tight"
+            >SEROB</span
+          >
+        </a>
+        <a
+          href="./index.html"
+          class="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors"
+        >
+          <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          Voltar ao Início
+        </a>
+      </div>
+    </header>
+
+    <!-- Conteúdo dos Termos -->
+    <main class="max-w-4xl mx-auto px-6 py-16 animate-fade-in">
+      <div
+        class="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 md:p-12"
+      >
+        <h1 class="text-3xl font-extrabold text-slate-900 mb-2">
+          Termos de Uso
+        </h1>
+        <p class="text-sm text-slate-500 mb-10 pb-6 border-b border-slate-100">
+          Última atualização: 24 de Outubro de 2024
+        </p>
+
+        <div class="space-y-8 text-slate-600 leading-relaxed">
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              1. Aceitação dos Termos
+            </h2>
+            <p>
+              Ao acessar e utilizar o sistema SEROB, você concorda em cumprir e
+              ser regido por estes Termos de Uso. Se você não concordar com
+              qualquer parte destes termos, não deverá utilizar nossos serviços.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              2. Uso do Sistema
+            </h2>
+            <p>
+              O SEROB é um sistema de gestão de estoque fornecido no modelo SaaS
+              (Software as a Service). Você concorda em usar o sistema apenas
+              para fins legais e de forma que não infrinja os direitos de
+              terceiros, não restrinja ou iniba o uso e o aproveitamento do
+              sistema por qualquer outra pessoa.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              3. Contas de Usuário e Segurança
+            </h2>
+            <p>
+              Para acessar as funcionalidades completas, você precisa criar uma
+              conta. Você é responsável por manter a confidencialidade das suas
+              credenciais de login (email e senha) e por todas as atividades que
+              ocorram sob a sua conta. Notifique-nos imediatamente se suspeitar
+              de uso não autorizado.
+            </p>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-bold text-slate-900 mb-3">
+              4. Propriedade Intelectual
+            </h2>
+            <p>
+              Todo o conteúdo, design, código-fonte e infraestrutura do SEROB
+              são de propriedade exclusiva de seus desenvolvedores. É
+              terminantemente proibida a cópia, modificação ou distribuição não
+              autorizada de qualquer parte da plataforma.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="text-center py-8 text-sm text-slate-400 font-medium">
+      &copy; 2024 SEROB. Todos os direitos reservados.
+    </footer>
+
+    <script>
+      // Inicializa os ícones do Lucide
+      lucide.createIcons();
+    </script>
+  </body>
+</html>
